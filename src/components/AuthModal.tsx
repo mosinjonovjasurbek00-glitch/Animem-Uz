@@ -6,13 +6,15 @@ import axios from 'axios';
 import { useTranslation, Language } from '../i18n';
 import { ConfirmationResult } from 'firebase/auth';
 
+import { Turnstile } from '@marsidev/react-turnstile';
+
 interface AuthModalProps {
   onSuccess: () => void;
   onClose: () => void;
   language?: Language;
 }
 
-type AuthMode = 'login' | 'register' | 'verify';
+type AuthMode = 'login' | 'register' | 'verify' | 'code-verify' | 'complete-registration';
 
 const AVATARS = [
   'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix',
@@ -30,51 +32,41 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
   const [mode, setMode] = useState<AuthMode>('login');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<React.ReactNode | null>(null);
-  const [mathQuest, setMathQuest] = useState({ q: '', a: 0 });
-  const [userAnswer, setUserAnswer] = useState('');
-
-  const generateCaptcha = React.useCallback(() => {
-    const ops = ['+', '-', '*', '/'];
-    const op = ops[Math.floor(Math.random() * ops.length)];
-    let n1, n2, ans, q;
-
-    if (op === '+') {
-      n1 = Math.floor(Math.random() * 80) + 11;
-      n2 = Math.floor(Math.random() * 80) + 11;
-      ans = n1 + n2;
-      q = `${n1} + ${n2} = ?`;
-    } else if (op === '-') {
-      n1 = Math.floor(Math.random() * 80) + 20;
-      n2 = Math.floor(Math.random() * (n1 - 5)) + 5;
-      ans = n1 - n2;
-      q = `${n1} - ${n2} = ?`;
-    } else if (op === '*') {
-      n1 = Math.floor(Math.random() * 10) + 3;
-      n2 = Math.floor(Math.random() * 10) + 3;
-      ans = n1 * n2;
-      q = `${n1} × ${n2} = ?`;
-    } else { // Division
-      ans = Math.floor(Math.random() * 10) + 2;
-      n2 = Math.floor(Math.random() * 8) + 2;
-      n1 = ans * n2;
-      q = `${n1} ÷ ${n2} = ?`;
-    }
-
-    setMathQuest({ q, a: ans });
-    setUserAnswer('');
-  }, []);
+  const [verificationCode, setVerificationCode] = useState('');
+  const [resendTimer, setResendTimer] = useState(0);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
 
   useEffect(() => {
-    if (mode === 'login' || mode === 'register') {
-      generateCaptcha();
+    let timer: NodeJS.Timeout;
+    if (resendTimer > 0) {
+      timer = setInterval(() => {
+        setResendTimer(prev => prev - 1);
+      }, 1000);
     }
-  }, [generateCaptcha, mode]);
+    return () => clearInterval(timer);
+  }, [resendTimer]);
 
   // Form states
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+
+  const sendAuthCode = async (targetEmail: string) => {
+    if (!turnstileToken) {
+      setError(t('errorSystem')); // Should be "Verification required"
+      return false;
+    }
+    try {
+      await axios.post('/api/auth/send-code', { email: targetEmail, turnstileToken });
+      setResendTimer(60);
+      return true;
+    } catch (err: any) {
+      console.error("Failed to send code:", err);
+      setError(err.response?.data?.error || t('errorSystem'));
+      return false;
+    }
+  };
 
   const handleGoogleLogin = async () => {
     setLoading(true);
@@ -100,18 +92,14 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!turnstileToken) {
+      setError(t('errorSystem')); // Should be "Verification required"
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      if (parseInt(userAnswer) !== mathQuest.a) {
-        setError(t('mathWrongError'));
-        generateCaptcha();
-        setLoading(false);
-        return;
-      }
-
-      const result = await signInWithEmailAndPassword(auth, email, password);
-      await syncUserToFirestore(result.user);
+      await signInWithEmailAndPassword(auth, email, password);
       onSuccess();
     } catch (err: any) {
       console.error("Login error:", err);
@@ -137,6 +125,46 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!turnstileToken) {
+      setError(t('errorSystem'));
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const sent = await sendAuthCode(email);
+      if (sent) {
+        setMode('code-verify');
+      } else {
+        setError(t('errorSystem'));
+      }
+    } catch (err: any) {
+      console.error("Register error:", err);
+      setError(t('errorRegister'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await axios.post('/api/auth/verify-code', { email, code: verificationCode });
+      if (response.data.success) {
+        setMode('complete-registration');
+      }
+    } catch (err: any) {
+      console.error("Code verify error:", err);
+      setError(t('invalidCode'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFinalizeRegistration = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (password !== confirmPassword) {
       setError(t('passwordsNoMatchError'));
       return;
@@ -144,36 +172,23 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
     setLoading(true);
     setError(null);
     try {
-      if (parseInt(userAnswer) !== mathQuest.a) {
-        setError(t('mathWrongError'));
-        generateCaptcha();
-        setLoading(false);
-        return;
-      }
-
       const result = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(result.user, { displayName: name });
-      
-      try {
-        await sendEmailVerification(result.user);
-      } catch (vErr) {
-        console.warn("Verification email send failed:", vErr);
-      }
-
       await syncUserToFirestore(result.user);
       onSuccess();
     } catch (err: any) {
-      console.error("Register error:", err);
-      if (err.code === 'auth/email-already-in-use') {
-        setError(t('errorEmailExists'));
-      } else if (err.code === 'auth/operation-not-allowed') {
-        setError(t('errorSystem'));
-      } else {
-        setError(t('errorRegister'));
-      }
+      console.error("Profile creation error:", err);
+      setError(t('errorRegister'));
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleResendCode = async () => {
+    if (resendTimer > 0) return;
+    setLoading(true);
+    await sendAuthCode(email);
+    setLoading(false);
   };
 
   return (
@@ -226,6 +241,8 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
             <p className="text-[9px] text-slate-500 uppercase tracking-[0.3em] font-black">
               {mode === 'login' ? t('loginModeTitle') : 
                mode === 'register' ? t('registerModeTitle') : 
+               mode === 'code-verify' ? t('enterCode') :
+               mode === 'complete-registration' ? t('editProfile') :
                t('verifyModeTitle')}
             </p>
           </div>
@@ -251,6 +268,118 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
               >
                 <ArrowLeft size={16} /> {t('backToLogin')}
               </button>
+            </motion.div>
+          ) : mode === 'code-verify' ? (
+            <motion.div 
+              key="code-verify-state"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-6"
+            >
+              <div className="text-center space-y-2">
+                <div className="w-16 h-16 bg-red-600/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Mail size={32} className="text-red-500" />
+                </div>
+                <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest leading-relaxed">
+                  {t('codeSentTo').replace('{{email}}', email)}
+                </p>
+              </div>
+
+              <form onSubmit={handleVerifyCode} className="space-y-4">
+                <div className="relative">
+                  <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-red-400" size={18} />
+                  <input 
+                    type="text" 
+                    placeholder="123456"
+                    maxLength={6}
+                    className="glass-input w-full pl-12 h-14 bg-white/[0.02] border-white/5 focus:border-red-500/30 text-white text-center text-2xl font-black tracking-[0.5em]"
+                    value={verificationCode}
+                    onChange={e => setVerificationCode(e.target.value.replace(/\D/g, ''))}
+                    required
+                  />
+                </div>
+
+                <button type="submit" disabled={loading} className="glass-button-primary w-full py-4 text-[10px] font-black uppercase tracking-[0.2em] bg-red-600 hover:bg-red-500 shadow-red-600/20">
+                  {loading ? <Loader2 className="animate-spin mx-auto" size={20} /> : t('verify')}
+                </button>
+              </form>
+
+              <div className="text-center">
+                <button 
+                  onClick={handleResendCode}
+                  disabled={resendTimer > 0 || loading}
+                  className={`text-[9px] font-black uppercase tracking-widest transition-colors ${resendTimer > 0 ? 'text-slate-600 cursor-not-allowed' : 'text-slate-400 hover:text-red-400'}`}
+                >
+                  {resendTimer > 0 
+                    ? t('waitResend').replace('{{time}}', resendTimer.toString()) 
+                    : t('resendCode')}
+                </button>
+              </div>
+
+              <button 
+                onClick={() => setMode('register')}
+                className="glass-button w-full py-3 text-[9px] flex items-center justify-center gap-2 border-white/5 text-slate-500"
+              >
+                <ArrowLeft size={14} /> {t('back')}
+              </button>
+            </motion.div>
+          ) : mode === 'complete-registration' ? (
+            <motion.div 
+              key="complete-registration-state"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-6"
+            >
+              <div className="text-center space-y-2">
+                <div className="w-16 h-16 bg-red-600/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <User size={32} className="text-red-500" />
+                </div>
+                <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest leading-relaxed">
+                  {t('editProfile')}
+                </p>
+              </div>
+
+              <form onSubmit={handleFinalizeRegistration} className="space-y-4">
+                <div className="relative">
+                  <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                  <input 
+                    type="text" 
+                    placeholder={t('fullName')}
+                    className="glass-input w-full pl-12 h-14 bg-white/[0.02] border-white/5 focus:border-red-500/30"
+                    value={name}
+                    onChange={e => setName(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="relative">
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                  <input 
+                    type="password" 
+                    placeholder={t('passwordTitle')}
+                    className="glass-input w-full pl-12 h-14 bg-white/[0.02] border-white/5 focus:border-red-500/30"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="relative">
+                  <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                  <input 
+                    type="password" 
+                    placeholder={t('confirmPassword')}
+                    className="glass-input w-full pl-12 h-14 bg-white/[0.02] border-white/5 focus:border-red-500/30"
+                    value={confirmPassword}
+                    onChange={e => setConfirmPassword(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <button type="submit" disabled={loading} className="glass-button-primary w-full py-4 text-[10px] font-black uppercase tracking-[0.2em] bg-red-600 hover:bg-red-500 shadow-red-600/20">
+                  {loading ? <Loader2 className="animate-spin mx-auto" size={20} /> : t('signUp')}
+                </button>
+              </form>
             </motion.div>
           ) : (
             <motion.div 
@@ -284,24 +413,15 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
                       required
                     />
                   </div>
-                  <div className="space-y-3 p-4 rounded-2xl bg-white/[0.02] border border-white/5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-slate-500 uppercase font-black tracking-widest">{t('botCheck')}</span>
-                      <button type="button" onClick={generateCaptcha} className="text-red-500"><RefreshCcw size={14} /></button>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <div className="flex-1 px-4 py-3 bg-white/5 rounded-xl text-center font-mono text-lg font-black tracking-tighter text-red-500">
-                        {mathQuest.q}
-                      </div>
-                      <input 
-                        type="number"
-                        className="w-24 glass-input text-center h-12 text-sm font-black bg-white/[0.05] border-white/10"
-                        value={userAnswer}
-                        onChange={e => setUserAnswer(e.target.value)}
-                        required
-                      />
-                    </div>
+                  
+                  <div className="flex justify-center py-2 min-h-[65px]">
+                    <Turnstile
+                      siteKey={import.meta.env.VITE_CLOUDFLARE_TURNSTILE_SITE_KEY || "1x00000000000000000000AA"}
+                      onSuccess={(token) => setTurnstileToken(token)}
+                      options={{ theme: 'dark', size: 'flexible' }}
+                    />
                   </div>
+
                   <button type="submit" disabled={loading} className="glass-button-primary w-full py-4 text-[10px] font-black uppercase tracking-[0.2em] bg-red-600 hover:bg-red-500 shadow-red-600/20">
                     {loading ? <Loader2 className="animate-spin mx-auto" size={20} /> : t('signIn')}
                   </button>
@@ -311,67 +431,25 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
               {mode === 'register' && (
                 <form onSubmit={handleRegister} className="space-y-4">
                   <div className="relative">
-                    <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                    <input 
-                      type="text" 
-                      placeholder={t('fullName')}
-                      className="glass-input w-full pl-12 h-14 bg-white/[0.02] border-white/5 focus:border-red-500/30"
-                      value={name}
-                      onChange={e => setName(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <div className="relative">
-                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-red-400" size={18} />
                     <input 
                       type="email" 
                       placeholder={t('emailAddressTitle')}
-                      className="glass-input w-full pl-12 h-14 bg-white/[0.02] border-white/5 focus:border-red-500/30"
+                      className="glass-input w-full pl-12 h-14 bg-white/[0.02] border-white/5 focus:border-red-500/30 text-white"
                       value={email}
                       onChange={e => setEmail(e.target.value)}
                       required
                     />
                   </div>
-                  <div className="relative">
-                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                    <input 
-                      type="password" 
-                      placeholder={t('passwordTitle')}
-                      className="glass-input w-full pl-12 h-14 bg-white/[0.02] border-white/5 focus:border-red-500/30"
-                      value={password}
-                      onChange={e => setPassword(e.target.value)}
-                      required
+                  
+                  <div className="flex justify-center py-2 min-h-[65px]">
+                    <Turnstile
+                      siteKey={import.meta.env.VITE_CLOUDFLARE_TURNSTILE_SITE_KEY || "1x00000000000000000000AA"}
+                      onSuccess={(token) => setTurnstileToken(token)}
+                      options={{ theme: 'dark', size: 'flexible' }}
                     />
                   </div>
-                  <div className="relative">
-                    <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                    <input 
-                      type="password" 
-                      placeholder={t('confirmPassword')}
-                      className="glass-input w-full pl-12 h-14 bg-white/[0.02] border-white/5 focus:border-red-500/30"
-                      value={confirmPassword}
-                      onChange={e => setConfirmPassword(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-3 p-4 rounded-2xl bg-white/[0.02] border border-white/5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-slate-500 uppercase font-black tracking-widest">{t('botCheck')}</span>
-                      <button type="button" onClick={generateCaptcha} className="text-red-500"><RefreshCcw size={14} /></button>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <div className="flex-1 px-4 py-3 bg-white/5 rounded-xl text-center font-mono text-lg font-black tracking-tighter text-red-500">
-                        {mathQuest.q}
-                      </div>
-                      <input 
-                        type="number"
-                        className="w-24 glass-input text-center h-12 text-sm font-black bg-white/[0.05] border-white/10"
-                        value={userAnswer}
-                        onChange={e => setUserAnswer(e.target.value)}
-                        required
-                      />
-                    </div>
-                  </div>
+
                   <button type="submit" disabled={loading} className="glass-button-primary w-full py-4 text-[10px] font-black uppercase tracking-[0.2em] bg-red-600 hover:bg-red-500 shadow-red-600/20">
                     {loading ? <Loader2 className="animate-spin mx-auto" size={20} /> : t('signUp')}
                   </button>

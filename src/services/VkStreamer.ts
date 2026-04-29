@@ -15,10 +15,12 @@ export const vkStreamer = {
 
       // Try multiple regex patterns to capture video URL from player params
       const patterns = [
+        /url1080["']\s*:\s*["']([^"']+)["']/,
         /url720["']\s*:\s*["']([^"']+)["']/,
         /url480["']\s*:\s*["']([^"']+)["']/,
         /url360["']\s*:\s*["']([^"']+)["']/,
-        /url240["']\s*:\s*["']([^"']+)["']/
+        /url240["']\s*:\s*["']([^"']+)["']/,
+        /hls["']\s*:\s*["']([^"']+)["']/
       ];
 
       for (const pattern of patterns) {

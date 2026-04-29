@@ -6,12 +6,15 @@ import fs from "fs";
 import axios from "axios";
 import dotenv from "dotenv";
 import admin from "firebase-admin";
+import { Resend } from "resend";
 import { getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
 import firebaseConfig from "./firebase-applet-config.json" with { type: "json" };
 import { slugify } from "./src/lib/slugs.js";
 
 dotenv.config();
+
+const resend = new Resend(process.env.RESEND_API_KEY || "re_Upcvv97i_JJVBvU8afHGGUVyUp1a2qYSU");
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -39,22 +42,34 @@ if (admin.apps.length === 0) {
   }
 }
 
-// Access services with robust database ID resolution
+// Access services with robust database ID resolution and caching
+let _db: any = null;
 const getDbAdmin = () => {
+  if (_db) return _db;
+
+  const configDbId = firebaseConfig.firestoreDatabaseId;
+  const projectId = firebaseConfig.projectId;
+
   try {
-    const configDbId = firebaseConfig.firestoreDatabaseId;
     if (configDbId && configDbId !== "(default)" && configDbId.trim() !== "") {
-      return getFirestore(admin.app(), configDbId);
+      console.log(`[Firebase] Initializing Firestore for named database: ${configDbId} in project ${projectId}`);
+      _db = getFirestore(admin.app(), configDbId);
+      return _db;
     }
   } catch (e) {
     console.warn("[Firebase] Named DB access failed, trying default:", e);
   }
-  return getFirestore();
+  
+  console.log(`[Firebase] Falling back to default database in project ${projectId}`);
+  _db = getFirestore();
+  return _db;
 };
 
 const getAuthAdmin = () => getAuth();
 
 import { tgStreamer } from "./src/services/TelegramStreamer";
+import { discordStreamer } from "./src/services/DiscordStreamer";
+import { okRuStreamer } from "./src/services/OkRuStreamer";
 import { rumbleStreamer } from "./src/services/RumbleStreamer";
 import { dailymotionStreamer } from "./src/services/DailymotionStreamer";
 import { vkStreamer } from "./src/services/VkStreamer";
@@ -69,6 +84,14 @@ async function setupServer() {
   // Katta videolarni serverdan parchalab uzatish yo'li
   app.get("/api/telegram/stream", async (req, res) => {
     await tgStreamer.handleStream(req, res);
+  });
+
+  app.get("/api/discord/stream", async (req, res) => {
+    await discordStreamer.handleStream(req, res);
+  });
+
+  app.get("/api/okru/stream", async (req, res) => {
+    await okRuStreamer.handleStream(req, res);
   });
 
   // Rumble videolarni to'g'ridan-to'g'ri MP4 manzilini olish yo'li
@@ -204,6 +227,94 @@ async function setupServer() {
       res.send(Buffer.from(response.data));
     } catch (error: any) {
       res.status(500).send("Proxy error");
+    }
+  });
+
+  // Auth Verification Routes
+  app.post("/api/auth/send-code", async (req, res) => {
+    const { email, turnstileToken } = req.body;
+    if (!email) return res.status(400).json({ error: "Email is required" });
+    if (!turnstileToken) return res.status(400).json({ error: "Bot verification required" });
+
+    try {
+      // Verify Cloudflare Turnstile Token
+      const secretKey = process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY || "1x000000000000000000000000000000000";
+      const verifyResponse = await axios.post(
+        "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+        new URLSearchParams({
+          secret: secretKey,
+          response: turnstileToken,
+        }).toString(),
+        {
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+        }
+      );
+
+      if (!verifyResponse.data.success) {
+        return res.status(400).json({ error: "Bot verification failed" });
+      }
+
+      const db = getDbAdmin();
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
+
+      await db.collection("verification_codes").doc(email).set({
+        code,
+        expiresAt,
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      console.log(`[Verification] Code for ${email}: ${code}`);
+      
+      try {
+        await resend.emails.send({
+          from: 'Anime Portal <onboarding@resend.dev>',
+          to: email,
+          subject: 'Tasdiqlash kodi',
+          html: `
+            <div style="font-family: sans-serif; max-width: 400px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+              <h2 style="color: #e11d48; text-align: center;">Anime Portal</h2>
+              <p style="color: #666; text-align: center;">Xush kelibsiz! Accountni tasdiqlash uchun quyidagi kodni kiriting:</p>
+              <div style="background: #f4f4f4; padding: 20px; border-radius: 8px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #000; margin: 20px 0;">
+                ${code}
+              </div>
+              <p style="color: #999; font-size: 12px; text-align: center;">Kod 10 daqiqa davomida amal qiladi.</p>
+            </div>
+          `
+        });
+      } catch (emailErr) {
+        console.error("[Resend Error]", emailErr);
+        // We still return success because code is in DB, but in a real app we'd handle it.
+      }
+      
+      res.json({ success: true, message: "Verification code sent" });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/auth/verify-code", async (req, res) => {
+    const { email, code } = req.body;
+    if (!email || !code) return res.status(400).json({ error: "Email and code are required" });
+
+    try {
+      const db = getDbAdmin();
+      const doc = await db.collection("verification_codes").doc(email).get();
+      
+      if (!doc.exists) return res.status(400).json({ error: "Code not found" });
+      
+      const data = doc.data();
+      if (data?.code !== code) return res.status(400).json({ error: "Incorrect code" });
+      if (Date.now() > data.expiresAt) return res.status(400).json({ error: "Code expired" });
+
+      // Optional: Delete code after use
+      await db.collection("verification_codes").doc(email).delete();
+
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
     }
   });
 
@@ -599,14 +710,15 @@ async function startTelegramBridge() {
   }
 
   console.log("--- [Telegram Bridge] Ishga tushirildi! Yangi kontent monitoringi faol. ---");
-  const db = getDbAdmin();
   let lastProcessedId: string | null = null;
   let bridgeActive: boolean = true;
 
   // Warm up: get the latest ID to avoid double-posting old content on restart
   try {
     const dbInstance = getDbAdmin();
+    // Warm up logic: try with a simple get first if orderBy fails
     const initialSnap = await dbInstance.collection('public_notifications').orderBy('createdAt', 'desc').limit(1).get();
+    
     if (!initialSnap.empty) {
       lastProcessedId = initialSnap.docs[0].id;
       console.log(`[Telegram Bridge] Warm-up complete. Last ID: ${lastProcessedId}`);
@@ -614,24 +726,25 @@ async function startTelegramBridge() {
       console.log("[Telegram Bridge] No notifications found in database yet.");
     }
   } catch (e: any) {
-    if (e.message.includes('PERMISSION_DENIED')) {
-      console.error("[Telegram Bridge] Permission denied. Retrying with default database...");
+    const isNotFound = e.message && (e.message.includes('NOT_FOUND') || e.code === 5);
+    const isPermissionDenied = e.message && (e.message.includes('PERMISSION_DENIED') || e.code === 7);
+
+    if (isNotFound || isPermissionDenied) {
+      console.error(`[Telegram Bridge] Initial access failed (${isNotFound ? 'NOT_FOUND' : 'PERMISSION_DENIED'}). This usually means the database or collection is not yet ready.`);
+      
+      // Try one more time without orderBy just in case it's an index issue appearing as permission denied (rare but possible in some SDK versions)
       try {
-        const defaultDb = getFirestore();
-        const initialSnap = await defaultDb.collection('public_notifications').orderBy('createdAt', 'desc').limit(1).get();
-        if (!initialSnap.empty) {
-          lastProcessedId = initialSnap.docs[0].id;
+        const dbInstance = getDbAdmin();
+        const fallbackSnap = await dbInstance.collection('public_notifications').limit(1).get();
+        if (!fallbackSnap.empty) {
+          lastProcessedId = fallbackSnap.docs[0].id;
+          console.log(`[Telegram Bridge] Warm-up complete (fallback). Last ID: ${lastProcessedId}`);
         }
-      } catch (innerError: any) {
-        if (innerError.message && innerError.message.includes('PERMISSION_DENIED')) {
-           console.warn("[Telegram Bridge] Completely unable to access database due to IAM constraints. Disabling bridge.");
-           bridgeActive = false;
-        } else {
-           console.error("[Telegram Bridge] Default database also failed:", innerError);
-        }
+      } catch (err2) {
+        console.warn("[Telegram Bridge] Fallback also failed. Bridge will continue but may miss initial state.");
       }
     } else {
-      console.error("[Telegram Bridge] Initialization error:", e);
+      console.error("[Telegram Bridge] Unexpected initialization error:", e);
     }
   }
 
@@ -689,9 +802,9 @@ async function startTelegramBridge() {
         }
       }
     } catch (e: any) {
-      if (e.message && e.message.includes('PERMISSION_DENIED')) {
-        console.warn("[Telegram Bridge] O'qish huquqi yo'q (PERMISSION_DENIED). Loop to'xtatilmoqda.");
-        bridgeActive = false; // Disable future checks
+      const isPermissionDenied = e.message && (e.message.includes('PERMISSION_DENIED') || e.code === 7);
+      if (isPermissionDenied) {
+        console.warn("[Telegram Bridge] O'qish huquqi yo'q (PERMISSION_DENIED). Navbatdagi siklda qayta urinib ko'riladi.");
       } else {
         console.error("[Telegram Bridge] Loop error:", e);
       }

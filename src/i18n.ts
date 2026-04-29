@@ -216,6 +216,13 @@ export const translations = {
     chooseAvatar: "Avatar tanlang",
     saving: "Saqlanmoqda...",
     username: "Foydalanuvchi nomi",
+    enterCode: "Kodni kiriting",
+    verificationCode: "Tasdiqlash kodi",
+    resendCode: "Kodni qayta yuborish",
+    waitResend: "Qayta urinish: {{time}}s",
+    verify: "TASDIQLASH",
+    codeSentTo: "Kod ushbu mahzilga yuborildi: {{email}}",
+    invalidCode: "Kod noto'g'ri yoki muddati o'tgan",
   },
   ru: {
     home: "Главная",
@@ -433,6 +440,13 @@ export const translations = {
     chooseAvatar: "Выберите аватар",
     saving: "Сохранение...",
     username: "Имя пользователя",
+    enterCode: "Введите код",
+    verificationCode: "Код подтверждения",
+    resendCode: "Переотправить код",
+    waitResend: "Повтор через: {{time}}с",
+    verify: "ПОДТВЕРДИТЬ",
+    codeSentTo: "Код отправлен на: {{email}}",
+    invalidCode: "Неверный код или срок действия истек",
   }
 };
 

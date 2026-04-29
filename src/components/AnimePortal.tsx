@@ -80,19 +80,37 @@ const UniversalVideoPlayer = ({ src, videoRef, videoLoading, setVideoLoading, se
     const resolveSrc = async () => {
       if (!src) return;
       
-      // Check if it's already an embed/iframe URL
-      const embedPatterns = ['/embed/', 'player.html', 'sharing', 'watch?v=', 'youtube.com', 'youtu.be', 'vimeo.com', 'ok.ru/videoembed/'];
-      const isLikelyEmbed = embedPatterns.some(p => src.includes(p)) && !src.includes('/api/');
+      let finalSrc = src;
 
-      // If it's already a direct link or not one of our redirecting proxies, use it
-      const redirectingProxies = ['/api/rumble/stream', '/api/vk/stream', '/api/dtube/stream', '/api/dailymotion/stream'];
-      const isProxy = redirectingProxies.some(p => src.includes(p));
+      // Wrap known services into our proxies first
+      if (src.includes('t.me/') || src.includes('telegram.org')) {
+        finalSrc = `/api/telegram/stream?url=${encodeURIComponent(src)}`;
+      } else if (src.includes('discordapp.com') || src.includes('discordapp.net')) {
+        finalSrc = `/api/discord/stream?url=${encodeURIComponent(src)}`;
+      } else if (src.includes('vk.com/video') || src.includes('vkvideo.ru')) {
+        finalSrc = `/api/vk/stream?url=${encodeURIComponent(src)}`;
+      } else if (src.includes('ok.ru/')) {
+        // Special case for OK.ru - we often want the iframe directly
+        const proxyUrl = `/api/okru/stream?url=${encodeURIComponent(src)}`;
+        setResolvedSrc(proxyUrl);
+        setIsIframe(true);
+        console.log("[Video Player] OK.ru detected, using proxy:", proxyUrl);
+        return;
+      }
+
+      // Check if it's already an embed/iframe URL
+      const embedPatterns = ['/embed/', 'player.html', 'sharing', 'watch?v=', 'youtube.com', 'youtu.be', 'vimeo.com'];
+      const isLikelyEmbed = embedPatterns.some(p => finalSrc.includes(p)) && !finalSrc.includes('/api/');
+
+      // If it's a proxy link, we need to resolve it on the server
+      const redirectingProxies = ['/api/rumble/stream', '/api/vk/stream', '/api/dtube/stream', '/api/dailymotion/stream', '/api/telegram/stream', '/api/discord/stream', '/api/okru/stream'];
+      const isProxy = redirectingProxies.some(p => finalSrc.includes(p));
 
       if (!isProxy) {
         if (isLikelyEmbed) {
           setIsIframe(true);
         }
-        setResolvedSrc(src);
+        setResolvedSrc(finalSrc);
         return;
       }
 
@@ -103,7 +121,7 @@ const UniversalVideoPlayer = ({ src, videoRef, videoLoading, setVideoLoading, se
       const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
       
       try {
-        const fetchUrl = `${src}${src.includes('?') ? '&' : '?'}format=json`;
+        const fetchUrl = `${finalSrc}${finalSrc.includes('?') ? '&' : '?'}format=json`;
         const response = await fetch(fetchUrl, { signal: controller.signal });
         clearTimeout(timeoutId);
         
@@ -115,31 +133,23 @@ const UniversalVideoPlayer = ({ src, videoRef, videoLoading, setVideoLoading, se
         if (isMounted) {
           if (data.url) {
             setResolvedSrc(data.url);
+            setIsIframe(false); // If we got a direct URL, it's definitely not an iframe
           } else {
-            // Extraction failed, try to use original URL in iframe if it's a known embed-capable URL
-            const originalUrl = new URL(src, window.location.origin).searchParams.get('url');
-            if (originalUrl) {
-              console.log("[Player] Extraction failed, falling back to iframe for:", originalUrl);
-              setResolvedSrc(originalUrl);
-              setIsIframe(true);
-            } else {
-              setLoadError(true);
-              setVideoLoading(false);
+            // Extraction failed, fallback to original or proxy as redirect
+            setResolvedSrc(finalSrc);
+            // If it's NOT a stream, maybe try as iframe
+            if (finalSrc.includes('/api/vk/stream') || finalSrc.includes('/api/okru/stream')) {
+               // Keep as is, it'll redirect or we can try iframe
             }
           }
         }
       } catch (err: any) {
         clearTimeout(timeoutId);
         if (isMounted) {
-          const originalUrl = new URL(src, window.location.origin).searchParams.get('url');
-          if (originalUrl) {
-            setResolvedSrc(originalUrl);
-            setIsIframe(true);
-          } else {
-            setLoadError(true);
-            setVideoLoading(false);
-          }
+            setResolvedSrc(finalSrc);
         }
+      } finally {
+        if (isMounted) setVideoLoading(false);
       }
     };
 
@@ -245,7 +255,16 @@ const UniversalVideoPlayer = ({ src, videoRef, videoLoading, setVideoLoading, se
         onLoadedMetadata={(e) => {
           const video = e.currentTarget;
           setDuration(video.duration);
-          video.play().catch(err => console.warn("Autoplay failed:", err));
+          
+          // Use safe play logic
+          const playPromise = video.play();
+          if (playPromise !== undefined) {
+            playPromise.catch(err => {
+              if (err.name !== 'AbortError') {
+                console.warn("Autoplay failed:", err);
+              }
+            });
+          }
         }}
         onTimeUpdate={(e) => {
           const video = e.currentTarget;
@@ -259,7 +278,8 @@ const UniversalVideoPlayer = ({ src, videoRef, videoLoading, setVideoLoading, se
         onClick={() => {
           if (videoRef.current) {
             if (videoRef.current.paused) {
-              videoRef.current.play();
+              const p = videoRef.current.play();
+              if (p !== undefined) p.catch(() => {});
             } else {
               videoRef.current.pause();
             }
@@ -293,7 +313,10 @@ const UniversalVideoPlayer = ({ src, videoRef, videoLoading, setVideoLoading, se
           className="w-10 h-10 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded-full text-white transition-all active:scale-90" 
           onClick={(e) => {
             e.stopPropagation();
-            if (videoRef.current?.paused) { videoRef.current?.play(); }
+            if (videoRef.current?.paused) { 
+              const p = videoRef.current?.play(); 
+              if (p !== undefined) p.catch(() => {});
+            }
             else { videoRef.current?.pause(); }
           }}
         >

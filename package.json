@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
-    "@marsidev/react-turnstile": "^1.5.0",
+    "@marsidev/react-turnstile": "^1.5.1",
     "@tailwindcss/vite": "^4.1.14",
     "@types/node-fetch": "^2.6.11",
     "@types/react-google-recaptcha": "^2.1.9",
@@ -37,6 +37,7 @@
     "react-google-recaptcha": "^3.1.0",
     "react-helmet-async": "^3.0.0",
     "react-router-dom": "^7.14.2",
+    "resend": "^6.12.2",
     "tailwind-merge": "^3.5.0",
     "telegram": "^2.26.22",
     "tsx": "^4.21.0",

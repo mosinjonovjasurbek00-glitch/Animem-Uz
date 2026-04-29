@@ -20,27 +20,28 @@ export class TelegramStreamer {
   async init() {
     console.log("[Telegram Streamer] Init chaqirildi...");
     if (!this.apiId || !this.apiHash || !this.botToken) {
-      console.warn("[Telegram Streamer] Kalitlar to'liq emas. Bot token kerak.");
+      console.warn("[Telegram Streamer] Kalitlar to'liq emas. API_ID/HASH/BOT_TOKEN kerak.");
       return false;
     }
     if (this.client || this.isConnecting) return true;
 
     this.isConnecting = true;
+    console.log("[Telegram Streamer] TelegramClient ob'ekti yaratilmoqda...");
     const stringSession = new StringSession("");
     this.client = new TelegramClient(stringSession, this.apiId, this.apiHash, {
       connectionRetries: 5,
     });
 
     try {
-      console.log("[Telegram Streamer] Telegramga ulanilmoqda...");
+      console.log("[Telegram Streamer] Telegramga ulanish (start) jarayoni...");
       await this.client.start({
         botAuthToken: this.botToken,
       });
-      console.log("[Telegram Streamer] Muvaffaqiyatli ulandi!");
+      console.log("[Telegram Streamer] Telegramga muvaffaqiyatli ulandi!");
       this.isConnecting = false;
       return true;
     } catch (err: any) {
-      console.error("[Telegram Streamer] Ulanishda xato:", err.message);
+      console.error("[Telegram Streamer] Telegramga ulanishda xato:", err.message);
       this.client = null;
       this.isConnecting = false;
       return false;
@@ -48,6 +49,13 @@ export class TelegramStreamer {
   }
 
   async handleStream(req: Request, res: Response) {
+    // Handle CORS preflight
+    if (req.method === "OPTIONS") {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Range");
+      return res.status(204).end();
+    }
     if (!this.client) {
       const initialized = await this.init();
       if (!initialized || !this.client) {
@@ -59,53 +67,87 @@ export class TelegramStreamer {
     if (!videoUrl) return res.status(400).send("No url query parameter");
 
     try {
-      const match = videoUrl.match(/t\.me\/(?:c\/)?([a-zA-Z0-9_-]+)\/(\d+)/);
-      if (!match) return res.status(400).send("Invalid Telegram URL.");
+      const match = videoUrl.match(/t\.me\/(?:c\/)?([a-zA-Z0-9_\-\+]+)\/(\d+)/);
+      if (!match) {
+        console.warn("[Telegram Streamer] URL mos kelmadi:", videoUrl);
+        return res.status(400).send("Invalid Telegram URL.");
+      }
 
       let channelName: string | number = match[1];
       const messageId = parseInt(match[2]);
 
+      console.log(`[Telegram Streamer] Surov keldi. MsgID: ${messageId}, Channel: ${channelName}`);
+
       // Handle private channels (t.me/c/12345/1)
       if (!isNaN(Number(channelName))) {
-         // This is a private channel id
-         channelName = Number("-100" + channelName);
+         // This is a private channel id. 
+         // GramJS works best with -100 prefix for channels.
+         // Note: Some channels might need different prefix or just string id.
+         const cleanId = channelName.toString();
+         channelName = Number("-100" + cleanId);
+         console.log(`[Telegram Streamer] Private channel formatga o'tkazildi: ${channelName}`);
       }
 
-      const messages = await this.client.getMessages(channelName, { ids: [messageId] });
+      console.log("[Telegram Streamer] Xabar qidirilmoqda...");
+      let messages;
+      try {
+        messages = await this.client.getMessages(channelName, { ids: [messageId] });
+      } catch (getMsgErr: any) {
+        console.error("[Telegram Streamer] getMessages xatosi:", getMsgErr.message);
+        return res.status(500).send("Telegramdan xabarni olib bo'lmadi: " + getMsgErr.message);
+      }
+
       if (!messages || messages.length === 0 || !messages[0]) {
+        console.warn("[Telegram Streamer] Xabar topilmadi.");
         return res.status(404).send("Message not found or accessible. Bot kanalda admin emasmi?");
       }
 
       const media = messages[0].media;
       if (!media) {
+        console.warn("[Telegram Streamer] Media topilmadi.");
         return res.status(404).send("Mediya topilmadi.");
       }
 
+      console.log("[Telegram Streamer] Media topildi:", (media as any).className || "Document/Photo");
+
+      // Handle various media types
       // @ts-ignore
-      const document = media.document || media.photo; 
+      const document = media.document || media.photo || media; 
       if (!document) {
         return res.status(404).send("Not a document/video.");
       }
 
-      const size = document.size ? Number(document.size) : 0;
+      const size = (document as any).size ? Number((document as any).size) : 
+                   ((media as any).document && (media as any).document.size ? Number((media as any).document.size) : 0);
+      let mimeType = (document as any).mimeType || ((media as any).document && (media as any).document.mimeType) || "video/mp4";
+      
+      // Force video/mp4 for common video extensions if generic
+      if (mimeType === "application/octet-stream" || mimeType === "video/quicktime") {
+        mimeType = "video/mp4";
+      }
+
+      console.log(`[Telegram Streamer] Media hajmi: ${size} bytes, MimeType: ${mimeType}`);
+      
       const range = req.headers.range;
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Range");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Accept-Ranges", "bytes");
 
       if (!range) {
         res.setHeader("Content-Length", size);
-        res.setHeader("Content-Type", "video/mp4");
-        res.setHeader("Accept-Ranges", "bytes");
+        res.setHeader("Content-Type", mimeType);
         
-        // Return only a 200 header and first chunk if no range requested 
-        // to prevent Vercel memory crash on whole download
         const iterator = this.client.iterDownload({
           file: media,
           offset: bigInt(0),
-          limit: 1024 * 1024 * 2, // 2MB
-          requestSize: 512 * 1024,
+          limit: size, 
+          requestSize: 1024 * 512, // 512KB
         });
         
         for await (const chunk of iterator) {
-          if (res.closed) break;
+          if (res.destroyed || (res as any).closed) break;
           res.write(chunk);
         }
         res.end();
@@ -122,27 +164,27 @@ export class TelegramStreamer {
         "Content-Range": `bytes ${start}-${end}/${size}`,
         "Accept-Ranges": "bytes",
         "Content-Length": chunksize,
-        "Content-Type": "video/mp4",
+        "Content-Type": mimeType,
       });
 
-      console.log(`[Telegram Stream] Yuklanyapti: ${start} - ${end}`);
+      console.log(`[Telegram Stream] Streaming chunk: ${start} - ${end} (${chunksize} bytes)`);
       
       try {
         const iterator = this.client.iterDownload({
           file: media,
           offset: bigInt(start),
           limit: chunksize,
-          requestSize: 512 * 1024, // 512 KB chunk requests to Telegram
+          requestSize: 512 * 1024,
         });
 
         for await (const chunk of iterator) {
-          if (res.closed) break;
+          if (res.destroyed || (res as any).closed) break;
           res.write(chunk);
         }
         res.end();
       } catch (streamErr: any) {
-        console.error("IterDownload xatosi:", streamErr.message);
-        if (!res.closed) res.end();
+        console.error("[Telegram Streamer] Stream iteration error:", streamErr.message);
+        if (!res.destroyed && !(res as any).closed) res.end();
       }
 
     } catch (err: any) {
