@@ -54,15 +54,20 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
 
   const sendAuthCode = async (targetEmail: string) => {
     if (!turnstileToken) {
-      setError(t('errorSystem')); // Should be "Verification required"
+      setError(t('errorSystem')); 
       return false;
     }
     try {
-      await axios.post('/api/auth/send-code', { email: targetEmail, turnstileToken });
-      setResendTimer(60);
-      return true;
+      const response = await axios.post('/api/auth/send-code', { email: targetEmail, turnstileToken });
+      if (response.data.success) {
+        setResendTimer(60);
+        return true;
+      }
+      return false;
     } catch (err: any) {
       console.error("Failed to send code:", err);
+      // Reset token on error
+      setTurnstileToken(null);
       setError(err.response?.data?.error || t('errorSystem'));
       return false;
     }
@@ -178,7 +183,11 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
       onSuccess();
     } catch (err: any) {
       console.error("Profile creation error:", err);
-      setError(t('errorRegister'));
+      if (err.code === 'auth/operation-not-allowed') {
+        setError("Firebase Console'da Email/Password metodini yoqing.");
+      } else {
+        setError(t('errorRegister'));
+      }
     } finally {
       setLoading(false);
     }
@@ -416,8 +425,17 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
                   
                   <div className="flex justify-center py-2 min-h-[65px]">
                     <Turnstile
+                      key="login-turnstile"
                       siteKey={import.meta.env.VITE_CLOUDFLARE_TURNSTILE_SITE_KEY || "1x00000000000000000000AA"}
-                      onSuccess={(token) => setTurnstileToken(token)}
+                      onSuccess={(token) => {
+                        setTurnstileToken(token);
+                        setError(null);
+                      }}
+                      onError={() => {
+                        setTurnstileToken(null);
+                        setError(t('errorSystem'));
+                      }}
+                      onExpire={() => setTurnstileToken(null)}
                       options={{ theme: 'dark', size: 'flexible' }}
                     />
                   </div>
@@ -444,8 +462,17 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
                   
                   <div className="flex justify-center py-2 min-h-[65px]">
                     <Turnstile
+                      key="register-turnstile"
                       siteKey={import.meta.env.VITE_CLOUDFLARE_TURNSTILE_SITE_KEY || "1x00000000000000000000AA"}
-                      onSuccess={(token) => setTurnstileToken(token)}
+                      onSuccess={(token) => {
+                        setTurnstileToken(token);
+                        setError(null);
+                      }}
+                      onError={() => {
+                        setTurnstileToken(null);
+                        setError(t('errorSystem'));
+                      }}
+                      onExpire={() => setTurnstileToken(null)}
                       options={{ theme: 'dark', size: 'flexible' }}
                     />
                   </div>
