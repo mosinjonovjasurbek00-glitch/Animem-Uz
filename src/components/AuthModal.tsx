@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { auth, db, loginWithGoogle, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, sendEmailVerification, syncUserToFirestore } from '../firebase';
 import { Mail, Lock, User, Loader2, X, ArrowLeft, ShieldCheck, RefreshCcw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -35,6 +35,7 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
   const [verificationCode, setVerificationCode] = useState('');
   const [resendTimer, setResendTimer] = useState(0);
   const [recaptchaToken, setRecaptchaToken] = useState<string | null>(null);
+  const recaptchaRef = useRef<ReCAPTCHA>(null);
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -66,8 +67,9 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
       return false;
     } catch (err: any) {
       console.error("Failed to send code:", err);
-      // Reset token on error
+      // Reset token and widget on error
       setRecaptchaToken(null);
+      recaptchaRef.current?.reset();
       setError(err.response?.data?.error || t('errorSystem'));
       return false;
     }
@@ -425,6 +427,7 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
                   
                   <div className="flex justify-center py-2 min-h-[65px]">
                     <ReCAPTCHA
+                      ref={recaptchaRef}
                       sitekey={import.meta.env.VITE_RECAPTCHA_SITE_KEY || "6LfQuNAsAAAAAOFCXyI_YV2eqLuM-UAhNhNjQKSD"}
                       onChange={(token) => {
                         setRecaptchaToken(token);
@@ -461,6 +464,7 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
                   
                   <div className="flex justify-center py-2 min-h-[65px]">
                     <ReCAPTCHA
+                      ref={recaptchaRef}
                       sitekey={import.meta.env.VITE_RECAPTCHA_SITE_KEY || "6LfQuNAsAAAAAOFCXyI_YV2eqLuM-UAhNhNjQKSD"}
                       onChange={(token) => {
                         setRecaptchaToken(token);

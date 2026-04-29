@@ -239,20 +239,26 @@ async function setupServer() {
     try {
       // Verify reCAPTCHA Token
       const secretKey = process.env.RECAPTCHA_SECRET_KEY || "6LfQuNAsAAAAABtRT66WVfUCeD24vjsC4ElSVEPR";
+      
       const verifyResponse = await axios.post(
         "https://www.google.com/recaptcha/api/siteverify",
-        null,
+        new URLSearchParams({
+          secret: secretKey,
+          response: recaptchaToken,
+        }).toString(),
         {
-          params: {
-            secret: secretKey,
-            response: recaptchaToken,
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
           },
         }
       );
 
       if (!verifyResponse.data.success) {
         console.error("[reCAPTCHA Error Details]", verifyResponse.data['error-codes']);
-        return res.status(400).json({ error: "Bot verification failed (reCAPTCHA error)" });
+        return res.status(400).json({ 
+          error: "Bot verification failed", 
+          details: verifyResponse.data['error-codes'] 
+        });
       }
 
       const db = getDbAdmin();
