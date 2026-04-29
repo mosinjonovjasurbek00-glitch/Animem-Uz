@@ -184,7 +184,7 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
     } catch (err: any) {
       console.error("Profile creation error:", err);
       if (err.code === 'auth/operation-not-allowed') {
-        setError("Firebase Console'da Email/Password metodini yoqing.");
+        setError(t('errorSystem'));
       } else {
         setError(t('errorRegister'));
       }

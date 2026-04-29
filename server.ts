@@ -253,7 +253,8 @@ async function setupServer() {
       );
 
       if (!verifyResponse.data.success) {
-        return res.status(400).json({ error: "Bot verification failed" });
+        console.error("[Turnstile Error Details]", verifyResponse.data['error-codes']);
+        return res.status(400).json({ error: "Bot verification failed (Turnstile error)" });
       }
 
       const db = getDbAdmin();
