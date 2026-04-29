@@ -194,5 +194,11 @@ service cloud.firestore {
       allow create: if isAdmin() && isValidNewsItem(incoming()) && incoming().createdAt == request.time;
       allow delete: if isAdmin();
     }
+
+    match /verification_codes/{email} {
+      // Allow the backend to manage these. 
+      // Note: Backend using admin SDK bypasses this, but we include it for documentation/consistency.
+      allow read, write: if false; 
+    }
   }
 }

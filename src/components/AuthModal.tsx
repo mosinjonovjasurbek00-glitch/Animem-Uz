@@ -6,7 +6,7 @@ import axios from 'axios';
 import { useTranslation, Language } from '../i18n';
 import { ConfirmationResult } from 'firebase/auth';
 
-import ReCAPTCHA from 'react-google-recaptcha';
+import HCaptcha from '@hcaptcha/react-hcaptcha';
 
 interface AuthModalProps {
   onSuccess: () => void;
@@ -34,8 +34,8 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
   const [error, setError] = useState<React.ReactNode | null>(null);
   const [verificationCode, setVerificationCode] = useState('');
   const [resendTimer, setResendTimer] = useState(0);
-  const [recaptchaToken, setRecaptchaToken] = useState<string | null>(null);
-  const recaptchaRef = useRef<ReCAPTCHA>(null);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const captchaRef = useRef<HCaptcha>(null);
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -53,13 +53,32 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
   const [name, setName] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
+  const handleModeSwitch = (newMode: AuthMode) => {
+    setMode(newMode);
+    setError(null);
+    setCaptchaToken(null);
+    // No need to manually reset ref here as the component will re-mount
+  };
+
+  useEffect(() => {
+    // Clear captcha token on mode changes that involve captcha
+    if (mode === 'login' || mode === 'register') {
+      setCaptchaToken(null);
+    }
+  }, [mode]);
+
   const sendAuthCode = async (targetEmail: string) => {
-    if (!recaptchaToken) {
-      setError(t('errorSystem')); 
+    if (!captchaToken) {
+      setError(<div className="text-center">
+        <p className="mb-2 font-bold text-red-500">BOT TEKSHIRUVI TALAB QILINADI</p>
+        <p className="text-[8px] opacity-70">Iltimos, pastdagi katakka belgi qo'ying.</p>
+      </div>); 
       return false;
     }
     try {
-      const response = await axios.post('/api/auth/send-code', { email: targetEmail, recaptchaToken });
+      setLoading(true);
+      setError(null);
+      const response = await axios.post('/api/auth/send-code', { email: targetEmail, captchaToken });
       if (response.data.success) {
         setResendTimer(60);
         return true;
@@ -67,11 +86,22 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
       return false;
     } catch (err: any) {
       console.error("Failed to send code:", err);
-      // Reset token and widget on error
-      setRecaptchaToken(null);
-      recaptchaRef.current?.reset();
-      setError(err.response?.data?.error || t('errorSystem'));
+      // Reset token and widget on error to force re-verification
+      setCaptchaToken(null);
+      captchaRef.current?.resetCaptcha();
+      
+      const serverError = err.response?.data?.error;
+      const details = err.response?.data?.details;
+      
+      setError(
+        <div className="space-y-1">
+          <p className="font-bold">{serverError || t('errorSystem')}</p>
+          {details && <p className="text-[7px] opacity-50 lowercase">{details}</p>}
+        </div>
+      );
       return false;
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -99,8 +129,8 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!recaptchaToken) {
-      setError(t('errorSystem')); // Should be "Verification required"
+    if (!captchaToken) {
+      setError(<div className="text-center"><p className="font-bold text-red-500">BOT TEKSHIRUVI TALAB QILINADI</p></div>);
       return;
     }
     setLoading(true);
@@ -110,6 +140,10 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
       onSuccess();
     } catch (err: any) {
       console.error("Login error:", err);
+      // Reset captcha on login error too
+      setCaptchaToken(null);
+      captchaRef.current?.resetCaptcha();
+
       if (err.message?.includes('Could not reach Cloud Firestore backend') || err.code === 'unavailable') {
         setError(
           <div className="text-center space-y-2">
@@ -132,8 +166,8 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!recaptchaToken) {
-      setError(t('errorSystem'));
+    if (!captchaToken) {
+      setError(<div className="text-center"><p className="font-bold text-red-500">BOT TEKSHIRUVI TALAB QILINADI</p></div>);
       return;
     }
     setLoading(true);
@@ -142,12 +176,12 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
       const sent = await sendAuthCode(email);
       if (sent) {
         setMode('code-verify');
-      } else {
-        setError(t('errorSystem'));
       }
     } catch (err: any) {
       console.error("Register error:", err);
-      setError(t('errorRegister'));
+      setCaptchaToken(null);
+      captchaRef.current?.resetCaptcha();
+      setError(err.response?.data?.error || t('errorRegister'));
     } finally {
       setLoading(false);
     }
@@ -204,7 +238,6 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
 
   return (
     <div className="fixed inset-0 z-[150] flex items-center justify-center p-6">
-      <div id="recaptcha-container"></div>
       <motion.div 
         initial={{ opacity: 0 }} 
         animate={{ opacity: 1 }} 
@@ -426,16 +459,16 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
                   </div>
                   
                   <div className="flex justify-center py-2 min-h-[65px]">
-                    <ReCAPTCHA
-                      ref={recaptchaRef}
-                      sitekey={import.meta.env.VITE_RECAPTCHA_SITE_KEY || "6LfQuNAsAAAAAOFCXyI_YV2eqLuM-UAhNhNjQKSD"}
-                      onChange={(token) => {
-                        setRecaptchaToken(token);
+                    <HCaptcha
+                      ref={captchaRef}
+                      sitekey={import.meta.env.VITE_HCAPTCHA_SITE_KEY || "10000000-ffff-ffff-ffff-000000000001"}
+                      onVerify={(token) => {
+                        setCaptchaToken(token);
                         setError(null);
                       }}
-                      onExpired={() => setRecaptchaToken(null)}
-                      onErrored={() => {
-                        setRecaptchaToken(null);
+                      onExpire={() => setCaptchaToken(null)}
+                      onError={() => {
+                        setCaptchaToken(null);
                         setError(t('errorSystem'));
                       }}
                       theme="dark"
@@ -463,16 +496,16 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
                   </div>
                   
                   <div className="flex justify-center py-2 min-h-[65px]">
-                    <ReCAPTCHA
-                      ref={recaptchaRef}
-                      sitekey={import.meta.env.VITE_RECAPTCHA_SITE_KEY || "6LfQuNAsAAAAAOFCXyI_YV2eqLuM-UAhNhNjQKSD"}
-                      onChange={(token) => {
-                        setRecaptchaToken(token);
+                    <HCaptcha
+                      ref={captchaRef}
+                      sitekey={import.meta.env.VITE_HCAPTCHA_SITE_KEY || "10000000-ffff-ffff-ffff-000000000001"}
+                      onVerify={(token) => {
+                        setCaptchaToken(token);
                         setError(null);
                       }}
-                      onExpired={() => setRecaptchaToken(null)}
-                      onErrored={() => {
-                        setRecaptchaToken(null);
+                      onExpire={() => setCaptchaToken(null)}
+                      onError={() => {
+                        setCaptchaToken(null);
                         setError(t('errorSystem'));
                       }}
                       theme="dark"
@@ -506,7 +539,7 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
 
               <div className="text-center pt-2">
                 <button 
-                  onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
+                  onClick={() => handleModeSwitch(mode === 'login' ? 'register' : 'login')}
                   className="text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-red-400 transition-colors"
                 >
                   {mode === 'login' ? t('noAccount') : t('hasAccount')}

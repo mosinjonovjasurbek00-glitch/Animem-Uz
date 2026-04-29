@@ -26,42 +26,37 @@ process.env.GCLOUD_PROJECT = firebaseConfig.projectId;
 
 console.log(`DEBUG: Project ID from config: ${firebaseConfig.projectId}`);
 
-// Initialize Firebase Admin with Application Default Credentials
+// Initialize Firebase Admin with minimal configuration to let environment handle credentials
 if (admin.apps.length === 0) {
   try {
     console.log(`[Firebase] Initializing Admin for project: ${firebaseConfig.projectId}`);
     admin.initializeApp({
-      credential: admin.credential.applicationDefault(),
       projectId: firebaseConfig.projectId
     });
   } catch (e: any) {
-    console.warn("[Firebase] Init with credentials failed, trying minimal:", e.message);
-    admin.initializeApp({
-      projectId: firebaseConfig.projectId
-    });
+    console.error("[Firebase] Admin Initialization Error:", e.message);
   }
 }
 
-// Access services with robust database ID resolution and caching
+// Access services with robust database ID resolution
 let _db: any = null;
 const getDbAdmin = () => {
   if (_db) return _db;
 
   const configDbId = firebaseConfig.firestoreDatabaseId;
-  const projectId = firebaseConfig.projectId;
 
   try {
     if (configDbId && configDbId !== "(default)" && configDbId.trim() !== "") {
-      console.log(`[Firebase] Initializing Firestore for named database: ${configDbId} in project ${projectId}`);
+      console.log(`[Firebase] Using named database: "${configDbId}"`);
       _db = getFirestore(admin.app(), configDbId);
       return _db;
     }
-  } catch (e) {
-    console.warn("[Firebase] Named DB access failed, trying default:", e);
+  } catch (e: any) {
+    console.warn(`[Firebase] Failed to get named database:`, e.message);
   }
   
-  console.log(`[Firebase] Falling back to default database in project ${projectId}`);
-  _db = getFirestore();
+  console.log(`[Firebase] Using default database`);
+  _db = getFirestore(admin.app());
   return _db;
 };
 
@@ -232,47 +227,83 @@ async function setupServer() {
 
   // Auth Verification Routes
   app.post("/api/auth/send-code", async (req, res) => {
-    const { email, recaptchaToken } = req.body;
+    const { email, captchaToken } = req.body;
     if (!email) return res.status(400).json({ error: "Email is required" });
-    if (!recaptchaToken) return res.status(400).json({ error: "Bot verification required" });
+    if (!captchaToken) return res.status(400).json({ error: "Bot verification required" });
 
     try {
-      // Verify reCAPTCHA Token
-      const secretKey = process.env.RECAPTCHA_SECRET_KEY || "6LfQuNAsAAAAABtRT66WVfUCeD24vjsC4ElSVEPR";
+      // 1. Verify hCaptcha Token
+      const secretKey = process.env.HCAPTCHA_SECRET_KEY || "0x0000000000000000000000000000000000000000";
       
-      const verifyResponse = await axios.post(
-        "https://www.google.com/recaptcha/api/siteverify",
-        new URLSearchParams({
-          secret: secretKey,
-          response: recaptchaToken,
-        }).toString(),
-        {
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-        }
-      );
+      console.log(`[hCaptcha] Starting verification for: ${email}`);
+      
+      let verifyResponse;
+      try {
+        const bodyParams = new URLSearchParams();
+        bodyParams.append("secret", secretKey);
+        bodyParams.append("response", captchaToken);
 
-      if (!verifyResponse.data.success) {
-        console.error("[reCAPTCHA Error Details]", verifyResponse.data['error-codes']);
+        verifyResponse = await axios.post(
+          "https://hcaptcha.com/siteverify",
+          bodyParams.toString(),
+          {
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            timeout: 10000
+          }
+        );
+      } catch (rcError: any) {
+        console.error("[hCaptcha Network Error]", rcError.message);
+        return res.status(500).json({ error: "[HC-NET] Bot tekshiruvi serveri bilan bog'lanib bo'lmadi: " + rcError.message });
+      }
+
+      if (!verifyResponse.data || !verifyResponse.data.success) {
+        console.error("[hCaptcha Logic Error]", verifyResponse.data);
         return res.status(400).json({ 
-          error: "Bot verification failed", 
-          details: verifyResponse.data['error-codes'] 
+          error: "Bot tekshiruvidan o'tolmadingiz. Iltimos captchani qaytadan belgilang (HC-VALIDATE-FAIL).", 
+          details: verifyResponse.data ? verifyResponse.data['error-codes'] : 'No response data'
         });
       }
 
-      const db = getDbAdmin();
+      console.log("[hCaptcha] Success for", email);
+
+      // 2. Generate Code
       const code = Math.floor(100000 + Math.random() * 900000).toString();
       const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
 
-      await db.collection("verification_codes").doc(email).set({
-        code,
-        expiresAt,
-        createdAt: admin.firestore.FieldValue.serverTimestamp()
-      });
+      // 3. Save to Firestore
+      try {
+        const adminDb = getDbAdmin();
+        await adminDb.collection("verification_codes").doc(email).set({
+          code,
+          expiresAt,
+          createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        console.log(`[Verification] Code saved to main DB for ${email}`);
+      } catch (writeError: any) {
+        console.error("[Firestore Write Error]", writeError.message);
+        
+        // Try fallback to default database if named one failed
+        try {
+          console.log("[Firebase] Attempting fallback to default database for", email);
+          const defaultDb = getFirestore(admin.app());
+          await defaultDb.collection("verification_codes").doc(email).set({
+            code,
+            expiresAt,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+          console.log(`[Verification] Code saved to default DB for ${email}`);
+        } catch (fallbackError: any) {
+          console.error("[Firestore Fallback Write Error]", fallbackError.message);
+          return res.status(500).json({ 
+            error: "[FS-WRITE-FAIL] Ma'lumotlar bazasiga yozishda xatolik yuz berdi. Iltimos Firebase konsolida Firestore yoqilganligini tekshiring.",
+            details: writeError.message + " | " + fallbackError.message
+          });
+        }
+      }
 
       console.log(`[Verification] Code for ${email}: ${code}`);
       
+      // 4. Send Email
       try {
         await resend.emails.send({
           from: 'Anime Portal <onboarding@resend.dev>',
@@ -289,14 +320,15 @@ async function setupServer() {
             </div>
           `
         });
-      } catch (emailErr) {
-        console.error("[Resend Error]", emailErr);
-        // We still return success because code is in DB, but in a real app we'd handle it.
+      } catch (emailErr: any) {
+        console.error("[Resend Error]", emailErr.message);
+        // Don't return error here, the code is in the logs for dev/testing
       }
       
-      res.json({ success: true, message: "Verification code sent" });
+      return res.json({ success: true, message: "Verification code sent" });
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      console.error("[Auth Route Critical Error]", error);
+      return res.status(500).json({ error: "[AUTH-CRIT] Tizimda noma'lum xatolik yuz berdi: " + (error.message || "No message") });
     }
   });
 
