@@ -232,29 +232,27 @@ async function setupServer() {
 
   // Auth Verification Routes
   app.post("/api/auth/send-code", async (req, res) => {
-    const { email, turnstileToken } = req.body;
+    const { email, recaptchaToken } = req.body;
     if (!email) return res.status(400).json({ error: "Email is required" });
-    if (!turnstileToken) return res.status(400).json({ error: "Bot verification required" });
+    if (!recaptchaToken) return res.status(400).json({ error: "Bot verification required" });
 
     try {
-      // Verify Cloudflare Turnstile Token
-      const secretKey = process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY || "1x000000000000000000000000000000000";
+      // Verify reCAPTCHA Token
+      const secretKey = process.env.RECAPTCHA_SECRET_KEY || "6LfQuNAsAAAAABtRT66WVfUCeD24vjsC4ElSVEPR";
       const verifyResponse = await axios.post(
-        "https://challenges.cloudflare.com/turnstile/v0/siteverify",
-        new URLSearchParams({
-          secret: secretKey,
-          response: turnstileToken,
-        }).toString(),
+        "https://www.google.com/recaptcha/api/siteverify",
+        null,
         {
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
+          params: {
+            secret: secretKey,
+            response: recaptchaToken,
           },
         }
       );
 
       if (!verifyResponse.data.success) {
-        console.error("[Turnstile Error Details]", verifyResponse.data['error-codes']);
-        return res.status(400).json({ error: "Bot verification failed (Turnstile error)" });
+        console.error("[reCAPTCHA Error Details]", verifyResponse.data['error-codes']);
+        return res.status(400).json({ error: "Bot verification failed (reCAPTCHA error)" });
       }
 
       const db = getDbAdmin();

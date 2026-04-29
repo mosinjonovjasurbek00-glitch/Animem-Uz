@@ -6,7 +6,7 @@ import axios from 'axios';
 import { useTranslation, Language } from '../i18n';
 import { ConfirmationResult } from 'firebase/auth';
 
-import { Turnstile } from '@marsidev/react-turnstile';
+import ReCAPTCHA from 'react-google-recaptcha';
 
 interface AuthModalProps {
   onSuccess: () => void;
@@ -34,7 +34,7 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
   const [error, setError] = useState<React.ReactNode | null>(null);
   const [verificationCode, setVerificationCode] = useState('');
   const [resendTimer, setResendTimer] = useState(0);
-  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [recaptchaToken, setRecaptchaToken] = useState<string | null>(null);
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -53,12 +53,12 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
   const [confirmPassword, setConfirmPassword] = useState('');
 
   const sendAuthCode = async (targetEmail: string) => {
-    if (!turnstileToken) {
+    if (!recaptchaToken) {
       setError(t('errorSystem')); 
       return false;
     }
     try {
-      const response = await axios.post('/api/auth/send-code', { email: targetEmail, turnstileToken });
+      const response = await axios.post('/api/auth/send-code', { email: targetEmail, recaptchaToken });
       if (response.data.success) {
         setResendTimer(60);
         return true;
@@ -67,7 +67,7 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
     } catch (err: any) {
       console.error("Failed to send code:", err);
       // Reset token on error
-      setTurnstileToken(null);
+      setRecaptchaToken(null);
       setError(err.response?.data?.error || t('errorSystem'));
       return false;
     }
@@ -97,7 +97,7 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!turnstileToken) {
+    if (!recaptchaToken) {
       setError(t('errorSystem')); // Should be "Verification required"
       return;
     }
@@ -130,7 +130,7 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!turnstileToken) {
+    if (!recaptchaToken) {
       setError(t('errorSystem'));
       return;
     }
@@ -424,19 +424,18 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
                   </div>
                   
                   <div className="flex justify-center py-2 min-h-[65px]">
-                    <Turnstile
-                      key="login-turnstile"
-                      siteKey={import.meta.env.VITE_CLOUDFLARE_TURNSTILE_SITE_KEY || "1x00000000000000000000AA"}
-                      onSuccess={(token) => {
-                        setTurnstileToken(token);
+                    <ReCAPTCHA
+                      sitekey={import.meta.env.VITE_RECAPTCHA_SITE_KEY || "6LfQuNAsAAAAAOFCXyI_YV2eqLuM-UAhNhNjQKSD"}
+                      onChange={(token) => {
+                        setRecaptchaToken(token);
                         setError(null);
                       }}
-                      onError={() => {
-                        setTurnstileToken(null);
+                      onExpired={() => setRecaptchaToken(null)}
+                      onErrored={() => {
+                        setRecaptchaToken(null);
                         setError(t('errorSystem'));
                       }}
-                      onExpire={() => setTurnstileToken(null)}
-                      options={{ theme: 'dark', size: 'flexible' }}
+                      theme="dark"
                     />
                   </div>
 
@@ -461,19 +460,18 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
                   </div>
                   
                   <div className="flex justify-center py-2 min-h-[65px]">
-                    <Turnstile
-                      key="register-turnstile"
-                      siteKey={import.meta.env.VITE_CLOUDFLARE_TURNSTILE_SITE_KEY || "1x00000000000000000000AA"}
-                      onSuccess={(token) => {
-                        setTurnstileToken(token);
+                    <ReCAPTCHA
+                      sitekey={import.meta.env.VITE_RECAPTCHA_SITE_KEY || "6LfQuNAsAAAAAOFCXyI_YV2eqLuM-UAhNhNjQKSD"}
+                      onChange={(token) => {
+                        setRecaptchaToken(token);
                         setError(null);
                       }}
-                      onError={() => {
-                        setTurnstileToken(null);
+                      onExpired={() => setRecaptchaToken(null)}
+                      onErrored={() => {
+                        setRecaptchaToken(null);
                         setError(t('errorSystem'));
                       }}
-                      onExpire={() => setTurnstileToken(null)}
-                      options={{ theme: 'dark', size: 'flexible' }}
+                      theme="dark"
                     />
                   </div>
 
