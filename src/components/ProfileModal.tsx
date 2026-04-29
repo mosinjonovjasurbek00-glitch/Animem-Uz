@@ -34,15 +34,20 @@ export default function ProfileModal({ onClose, isOpen, language = 'uz' }: Profi
 
   useEffect(() => {
     async function loadProfile() {
-      if (user) {
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        if (userDoc.exists()) {
-          const data = userDoc.data();
-          setUsername(data.username || user.displayName || '');
-          setAvatarUrl(data.photoURL || '');
+      try {
+        if (user) {
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          if (userDoc.exists()) {
+            const data = userDoc.data();
+            setUsername(data.username || user.displayName || '');
+            setAvatarUrl(data.photoURL || '');
+          }
         }
+      } catch (err) {
+        console.error('Error loading profile:', err);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
     if (isOpen) {
       loadProfile();
