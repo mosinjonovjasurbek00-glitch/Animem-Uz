@@ -6,8 +6,6 @@ import axios from 'axios';
 import { useTranslation, Language } from '../i18n';
 import { ConfirmationResult } from 'firebase/auth';
 
-import HCaptcha from '@hcaptcha/react-hcaptcha';
-
 interface AuthModalProps {
   onSuccess: () => void;
   onClose: () => void;
@@ -34,18 +32,6 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
   const [error, setError] = useState<React.ReactNode | null>(null);
   const [verificationCode, setVerificationCode] = useState('');
   const [resendTimer, setResendTimer] = useState(0);
-  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
-  const captchaRef = useRef<HCaptcha>(null);
-
-  useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (resendTimer > 0) {
-      timer = setInterval(() => {
-        setResendTimer(prev => prev - 1);
-      }, 1000);
-    }
-    return () => clearInterval(timer);
-  }, [resendTimer]);
 
   // Form states
   const [email, setEmail] = useState('');
@@ -56,29 +42,16 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
   const handleModeSwitch = (newMode: AuthMode) => {
     setMode(newMode);
     setError(null);
-    setCaptchaToken(null);
-    // No need to manually reset ref here as the component will re-mount
   };
 
   useEffect(() => {
-    // Clear captcha token on mode changes that involve captcha
-    if (mode === 'login' || mode === 'register') {
-      setCaptchaToken(null);
-    }
   }, [mode]);
 
   const sendAuthCode = async (targetEmail: string) => {
-    if (!captchaToken) {
-      setError(<div className="text-center">
-        <p className="mb-2 font-bold text-red-500">BOT TEKSHIRUVI TALAB QILINADI</p>
-        <p className="text-[8px] opacity-70">Iltimos, pastdagi katakka belgi qo'ying.</p>
-      </div>); 
-      return false;
-    }
     try {
       setLoading(true);
       setError(null);
-      const response = await axios.post('/api/auth/send-code', { email: targetEmail, captchaToken });
+      const response = await axios.post('/api/auth/send-code', { email: targetEmail });
       if (response.data.success) {
         setResendTimer(60);
         return true;
@@ -86,9 +59,6 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
       return false;
     } catch (err: any) {
       console.error("Failed to send code:", err);
-      // Reset token and widget on error to force re-verification
-      setCaptchaToken(null);
-      captchaRef.current?.resetCaptcha();
       
       const serverError = err.response?.data?.error;
       const details = err.response?.data?.details;
@@ -129,10 +99,6 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!captchaToken) {
-      setError(<div className="text-center"><p className="font-bold text-red-500">BOT TEKSHIRUVI TALAB QILINADI</p></div>);
-      return;
-    }
     setLoading(true);
     setError(null);
     try {
@@ -140,9 +106,6 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
       onSuccess();
     } catch (err: any) {
       console.error("Login error:", err);
-      // Reset captcha on login error too
-      setCaptchaToken(null);
-      captchaRef.current?.resetCaptcha();
 
       if (err.message?.includes('Could not reach Cloud Firestore backend') || err.code === 'unavailable') {
         setError(
@@ -166,10 +129,6 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!captchaToken) {
-      setError(<div className="text-center"><p className="font-bold text-red-500">BOT TEKSHIRUVI TALAB QILINADI</p></div>);
-      return;
-    }
     setLoading(true);
     setError(null);
     try {
@@ -179,8 +138,6 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
       }
     } catch (err: any) {
       console.error("Register error:", err);
-      setCaptchaToken(null);
-      captchaRef.current?.resetCaptcha();
       setError(err.response?.data?.error || t('errorRegister'));
     } finally {
       setLoading(false);
@@ -458,23 +415,6 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
                     />
                   </div>
                   
-                  <div className="flex justify-center py-2 min-h-[65px]">
-                    <HCaptcha
-                      ref={captchaRef}
-                      sitekey={import.meta.env.VITE_HCAPTCHA_SITE_KEY || "10000000-ffff-ffff-ffff-000000000001"}
-                      onVerify={(token) => {
-                        setCaptchaToken(token);
-                        setError(null);
-                      }}
-                      onExpire={() => setCaptchaToken(null)}
-                      onError={() => {
-                        setCaptchaToken(null);
-                        setError(t('errorSystem'));
-                      }}
-                      theme="dark"
-                    />
-                  </div>
-
                   <button type="submit" disabled={loading} className="glass-button-primary w-full py-4 text-[10px] font-black uppercase tracking-[0.2em] bg-red-600 hover:bg-red-500 shadow-red-600/20">
                     {loading ? <Loader2 className="animate-spin mx-auto" size={20} /> : t('signIn')}
                   </button>
@@ -495,23 +435,6 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
                     />
                   </div>
                   
-                  <div className="flex justify-center py-2 min-h-[65px]">
-                    <HCaptcha
-                      ref={captchaRef}
-                      sitekey={import.meta.env.VITE_HCAPTCHA_SITE_KEY || "10000000-ffff-ffff-ffff-000000000001"}
-                      onVerify={(token) => {
-                        setCaptchaToken(token);
-                        setError(null);
-                      }}
-                      onExpire={() => setCaptchaToken(null)}
-                      onError={() => {
-                        setCaptchaToken(null);
-                        setError(t('errorSystem'));
-                      }}
-                      theme="dark"
-                    />
-                  </div>
-
                   <button type="submit" disabled={loading} className="glass-button-primary w-full py-4 text-[10px] font-black uppercase tracking-[0.2em] bg-red-600 hover:bg-red-500 shadow-red-600/20">
                     {loading ? <Loader2 className="animate-spin mx-auto" size={20} /> : t('signUp')}
                   </button>

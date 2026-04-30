@@ -30,9 +30,7 @@ console.log(`DEBUG: Project ID from config: ${firebaseConfig.projectId}`);
 if (admin.apps.length === 0) {
   try {
     console.log(`[Firebase] Initializing Admin for project: ${firebaseConfig.projectId}`);
-    admin.initializeApp({
-      projectId: firebaseConfig.projectId
-    });
+    admin.initializeApp();
   } catch (e: any) {
     console.error("[Firebase] Admin Initialization Error:", e.message);
   }
@@ -45,14 +43,15 @@ const getDbAdmin = () => {
 
   const configDbId = firebaseConfig.firestoreDatabaseId;
 
+  // Try named database first, if it fails, fallback to default.
   try {
     if (configDbId && configDbId !== "(default)" && configDbId.trim() !== "") {
-      console.log(`[Firebase] Using named database: "${configDbId}"`);
+      console.log(`[Firebase] Attempting to use named database: "${configDbId}"`);
       _db = getFirestore(admin.app(), configDbId);
       return _db;
     }
   } catch (e: any) {
-    console.warn(`[Firebase] Failed to get named database:`, e.message);
+    console.warn(`[Firebase] Failed to get named database "${configDbId}", falling back to default:`, e.message);
   }
   
   console.log(`[Firebase] Using default database`);
@@ -227,44 +226,12 @@ async function setupServer() {
 
   // Auth Verification Routes
   app.post("/api/auth/send-code", async (req, res) => {
-    const { email, captchaToken } = req.body;
+    const { email } = req.body;
+    console.log(`[Auth/send-code] Received request for email: ${email}`);
     if (!email) return res.status(400).json({ error: "Email is required" });
-    if (!captchaToken) return res.status(400).json({ error: "Bot verification required" });
 
     try {
-      // 1. Verify hCaptcha Token
-      const secretKey = process.env.HCAPTCHA_SECRET_KEY || "0x0000000000000000000000000000000000000000";
-      
-      console.log(`[hCaptcha] Starting verification for: ${email}`);
-      
-      let verifyResponse;
-      try {
-        const bodyParams = new URLSearchParams();
-        bodyParams.append("secret", secretKey);
-        bodyParams.append("response", captchaToken);
-
-        verifyResponse = await axios.post(
-          "https://hcaptcha.com/siteverify",
-          bodyParams.toString(),
-          {
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            timeout: 10000
-          }
-        );
-      } catch (rcError: any) {
-        console.error("[hCaptcha Network Error]", rcError.message);
-        return res.status(500).json({ error: "[HC-NET] Bot tekshiruvi serveri bilan bog'lanib bo'lmadi: " + rcError.message });
-      }
-
-      if (!verifyResponse.data || !verifyResponse.data.success) {
-        console.error("[hCaptcha Logic Error]", verifyResponse.data);
-        return res.status(400).json({ 
-          error: "Bot tekshiruvidan o'tolmadingiz. Iltimos captchani qaytadan belgilang (HC-VALIDATE-FAIL).", 
-          details: verifyResponse.data ? verifyResponse.data['error-codes'] : 'No response data'
-        });
-      }
-
-      console.log("[hCaptcha] Success for", email);
+      console.log("[Captcha] Skipping captcha verification for", email);
 
       // 2. Generate Code
       const code = Math.floor(100000 + Math.random() * 900000).toString();
@@ -278,27 +245,13 @@ async function setupServer() {
           expiresAt,
           createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
-        console.log(`[Verification] Code saved to main DB for ${email}`);
+        console.log(`[Verification] Code saved to Firestore for ${email}`);
       } catch (writeError: any) {
         console.error("[Firestore Write Error]", writeError.message);
-        
-        // Try fallback to default database if named one failed
-        try {
-          console.log("[Firebase] Attempting fallback to default database for", email);
-          const defaultDb = getFirestore(admin.app());
-          await defaultDb.collection("verification_codes").doc(email).set({
-            code,
-            expiresAt,
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
-          });
-          console.log(`[Verification] Code saved to default DB for ${email}`);
-        } catch (fallbackError: any) {
-          console.error("[Firestore Fallback Write Error]", fallbackError.message);
-          return res.status(500).json({ 
-            error: "[FS-WRITE-FAIL] Ma'lumotlar bazasiga yozishda xatolik yuz berdi. Iltimos Firebase konsolida Firestore yoqilganligini tekshiring.",
-            details: writeError.message + " | " + fallbackError.message
-          });
-        }
+        return res.status(500).json({ 
+          error: "[FS-WRITE-FAIL] Ma'lumotlar bazasiga yozishda xatolik yuz berdi. Firestore yoqilganligini va database ID to'g'riligini tekshiring.",
+          details: writeError.message
+        });
       }
 
       console.log(`[Verification] Code for ${email}: ${code}`);
@@ -352,6 +305,42 @@ async function setupServer() {
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Debug route for Firebase availability
+  app.get("/api/debug/firebase-check", async (req, res) => {
+    try {
+      const db = getDbAdmin();
+      const collections = await db.listCollections();
+      const collectionNames = collections.map((c: any) => c.id);
+      
+      const config = {
+        projectId: firebaseConfig.projectId,
+        databaseId: firebaseConfig.firestoreDatabaseId,
+        authDomain: firebaseConfig.authDomain
+      };
+
+      res.json({
+        success: true,
+        config,
+        collections: collectionNames,
+        env: {
+          GOOGLE_CLOUD_PROJECT: process.env.GOOGLE_CLOUD_PROJECT,
+          NODE_ENV: process.env.NODE_ENV
+        }
+      });
+    } catch (error: any) {
+      console.error("[Firebase Check Error]", error);
+      res.status(500).json({ 
+        success: false, 
+        error: error.message,
+        code: error.code,
+        config: {
+          projectId: firebaseConfig.projectId,
+          databaseId: firebaseConfig.firestoreDatabaseId
+        }
+      });
     }
   });
 

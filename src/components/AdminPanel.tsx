@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { db, auth, storage } from '../firebase';
+import { db, auth, storage, handleFirestoreError, OperationType } from '../firebase';
 import { collection, addDoc, deleteDoc, doc, query, onSnapshot, serverTimestamp, where, updateDoc, getDocs, orderBy, writeBatch, getDoc, setDoc } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { Helmet } from 'react-helmet-async';
@@ -160,7 +160,7 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
         return getTs(b.createdAt) - getTs(a.createdAt);
       }));
       setLoading(false);
-    });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'anime'));
     return () => unsubscribe();
   }, []);
 
@@ -169,7 +169,7 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
       const q = query(collection(db, 'messages'), orderBy('createdAt', 'desc'));
       const unsubscribe = onSnapshot(q, (snapshot) => {
         setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as MessageDoc[]);
-      });
+      }, (error) => handleFirestoreError(error, OperationType.LIST, 'messages'));
       return () => unsubscribe();
     }
   }, [activeTab]);
@@ -179,7 +179,7 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
       const q = query(collection(db, 'users'), where('role', '==', 'admin'));
       const unsubscribe = onSnapshot(q, (snapshot) => {
         setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as UserDoc[]);
-      });
+      }, (error) => handleFirestoreError(error, OperationType.LIST, 'users'));
       return () => unsubscribe();
     }
   }, [activeTab]);
@@ -189,7 +189,7 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
       const q = query(collection(db, 'news_items'), orderBy('createdAt', 'desc'));
       const unsubscribe = onSnapshot(q, (snapshot) => {
         setNewsItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as NewsItemDoc[]);
-      });
+      }, (error) => handleFirestoreError(error, OperationType.LIST, 'news_items'));
       return () => unsubscribe();
     }
   }, [activeTab]);
@@ -205,7 +205,7 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setEpisodes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as EpisodeDoc[]);
-    });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'anime/episodes'));
     return () => unsubscribe();
   }, [selectedAnimeForEpisodes]);
 

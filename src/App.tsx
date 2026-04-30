@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { HelmetProvider } from 'react-helmet-async';
-import { auth, db, syncUserToFirestore } from './firebase';
+import { auth, db, syncUserToFirestore, handleFirestoreError, OperationType } from './firebase';
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { doc, getDoc, setDoc, collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { getRedirectResult } from 'firebase/auth';
@@ -139,10 +139,7 @@ function AppContent({
         return getTs(b.createdAt) - getTs(a.createdAt);
       }));
       setDataLoading(false);
-    }, (error) => {
-      setFetchError(t('errorFetchAnime'));
-      setDataLoading(false);
-    });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'anime'));
     return () => unsubscribe();
   }, []);
 

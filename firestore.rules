@@ -85,7 +85,9 @@ service cloud.firestore {
     // Section 3: Hardened Rulesets
     // ===============================================================
 
-    // [Pillar 6: PII Isolation] Users collection contains emails
+    match /users {
+      allow list: if isAdmin();
+    }
     match /users/{userId} {
       allow get: if isSignedIn() && (isOwner(userId) || isAdmin());
       // Only admins can list users
@@ -105,28 +107,30 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    match /anime/{animeId} {
-      allow read: if true;
-      allow create: if isAdmin() && isValidAnime(incoming());
-      
-      // [Pillar 4: Tiered Identity] Admins can manage all, others can only increment views
-      allow update: if isAdmin() || (
-        incoming().diff(existing()).affectedKeys().hasOnly(['views']) &&
-        incoming().views == existing().views + 1
-      );
-      allow delete: if isAdmin();
+    match /anime {
+      allow list: if true;
 
-      match /episodes/{episodeId} {
+      match /{animeId} {
         allow read: if true;
-        allow create: if isAdmin() && isValidEpisode(incoming());
-        allow update: if isAdmin() && isValidEpisode(incoming());
+        allow create: if isAdmin() && isValidAnime(incoming());
+        allow update: if isAdmin() || (
+          incoming().diff(existing()).affectedKeys().hasOnly(['views']) &&
+          incoming().views == existing().views + 1
+        );
         allow delete: if isAdmin();
-      }
 
-      match /comments/{commentId} {
-        allow read: if true;
-        allow create: if isSignedIn();
-        allow delete: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
+        match /episodes/{episodeId} {
+          allow read: if true;
+          allow create: if isAdmin() && isValidEpisode(incoming());
+          allow update: if isAdmin() && isValidEpisode(incoming());
+          allow delete: if isAdmin();
+        }
+
+        match /comments/{commentId} {
+          allow read: if true;
+          allow create: if isSignedIn();
+          allow delete: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
+        }
       }
     }
 
@@ -196,9 +200,8 @@ service cloud.firestore {
     }
 
     match /verification_codes/{email} {
-      // Allow the backend to manage these. 
-      // Note: Backend using admin SDK bypasses this, but we include it for documentation/consistency.
-      allow read, write: if false; 
+      // Allow for debugging
+      allow read, write: if isSignedIn(); 
     }
   }
 }
