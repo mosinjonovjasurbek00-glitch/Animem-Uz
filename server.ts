@@ -3,6 +3,7 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
+import crypto from "crypto";
 import axios from "axios";
 import dotenv from "dotenv";
 import admin from "firebase-admin";
@@ -14,7 +15,7 @@ import { slugify } from "./src/lib/slugs.js";
 
 dotenv.config();
 
-const resend = new Resend(process.env.RESEND_API_KEY || "re_Upcvv97i_JJVBvU8afHGGUVyUp1a2qYSU");
+const resend = new Resend(process.env.RESEND_API_KEY || "re_12JeyV4W_86o1wrUPcGEYbuP8eVU7imvt");
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -26,11 +27,16 @@ process.env.GCLOUD_PROJECT = firebaseConfig.projectId;
 
 console.log(`DEBUG: Project ID from config: ${firebaseConfig.projectId}`);
 
-// Initialize Firebase Admin with minimal configuration to let environment handle credentials
+// Initialize Firebase Admin with explicit configuration
 if (admin.apps.length === 0) {
   try {
-    console.log(`[Firebase] Initializing Admin for project: ${firebaseConfig.projectId}`);
-    admin.initializeApp();
+    const projectId = firebaseConfig.projectId;
+    console.log(`[Firebase] Initializing Admin for project: ${projectId}`);
+    console.log(`[Firebase] Environment - GOOGLE_CLOUD_PROJECT: ${process.env.GOOGLE_CLOUD_PROJECT}`);
+    console.log(`[Firebase] Environment - GCLOUD_PROJECT: ${process.env.GCLOUD_PROJECT}`);
+    admin.initializeApp({
+      projectId: projectId
+    });
   } catch (e: any) {
     console.error("[Firebase] Admin Initialization Error:", e.message);
   }
@@ -43,19 +49,21 @@ const getDbAdmin = () => {
 
   const configDbId = firebaseConfig.firestoreDatabaseId;
 
-  // Try named database first, if it fails, fallback to default.
   try {
     if (configDbId && configDbId !== "(default)" && configDbId.trim() !== "") {
       console.log(`[Firebase] Attempting to use named database: "${configDbId}"`);
-      _db = getFirestore(admin.app(), configDbId);
+      // Use getFirestore(databaseId) for named database
+      // Try to verify access by trying a tiny call
+      const db = getFirestore(configDbId);
+      _db = db;
       return _db;
     }
   } catch (e: any) {
-    console.warn(`[Firebase] Failed to get named database "${configDbId}", falling back to default:`, e.message);
+    console.warn(`[Firebase] Failed to initialize named database "${configDbId}", falling back to default:`, e.message);
   }
   
   console.log(`[Firebase] Using default database`);
-  _db = getFirestore(admin.app());
+  _db = getFirestore();
   return _db;
 };
 
@@ -224,94 +232,11 @@ async function setupServer() {
     }
   });
 
-  // Auth Verification Routes
-  app.post("/api/auth/send-code", async (req, res) => {
-    const { email } = req.body;
-    console.log(`[Auth/send-code] Received request for email: ${email}`);
-    if (!email) return res.status(400).json({ error: "Email is required" });
-
-    try {
-      console.log("[Captcha] Skipping captcha verification for", email);
-
-      // 2. Generate Code
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
-
-      // 3. Save to Firestore
-      try {
-        const adminDb = getDbAdmin();
-        await adminDb.collection("verification_codes").doc(email).set({
-          code,
-          expiresAt,
-          createdAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-        console.log(`[Verification] Code saved to Firestore for ${email}`);
-      } catch (writeError: any) {
-        console.error("[Firestore Write Error]", writeError.message);
-        return res.status(500).json({ 
-          error: "[FS-WRITE-FAIL] Ma'lumotlar bazasiga yozishda xatolik yuz berdi. Firestore yoqilganligini va database ID to'g'riligini tekshiring.",
-          details: writeError.message
-        });
-      }
-
-      console.log(`[Verification] Code for ${email}: ${code}`);
-      
-      // 4. Send Email
-      try {
-        await resend.emails.send({
-          from: 'Anime Portal <onboarding@resend.dev>',
-          to: email,
-          subject: 'Tasdiqlash kodi',
-          html: `
-            <div style="font-family: sans-serif; max-width: 400px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-              <h2 style="color: #e11d48; text-align: center;">Anime Portal</h2>
-              <p style="color: #666; text-align: center;">Xush kelibsiz! Accountni tasdiqlash uchun quyidagi kodni kiriting:</p>
-              <div style="background: #f4f4f4; padding: 20px; border-radius: 8px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #000; margin: 20px 0;">
-                ${code}
-              </div>
-              <p style="color: #999; font-size: 12px; text-align: center;">Kod 10 daqiqa davomida amal qiladi.</p>
-            </div>
-          `
-        });
-      } catch (emailErr: any) {
-        console.error("[Resend Error]", emailErr.message);
-        // Don't return error here, the code is in the logs for dev/testing
-      }
-      
-      return res.json({ success: true, message: "Verification code sent" });
-    } catch (error: any) {
-      console.error("[Auth Route Critical Error]", error);
-      return res.status(500).json({ error: "[AUTH-CRIT] Tizimda noma'lum xatolik yuz berdi: " + (error.message || "No message") });
-    }
-  });
-
-  app.post("/api/auth/verify-code", async (req, res) => {
-    const { email, code } = req.body;
-    if (!email || !code) return res.status(400).json({ error: "Email and code are required" });
-
-    try {
-      const db = getDbAdmin();
-      const doc = await db.collection("verification_codes").doc(email).get();
-      
-      if (!doc.exists) return res.status(400).json({ error: "Code not found" });
-      
-      const data = doc.data();
-      if (data?.code !== code) return res.status(400).json({ error: "Incorrect code" });
-      if (Date.now() > data.expiresAt) return res.status(400).json({ error: "Code expired" });
-
-      // Optional: Delete code after use
-      await db.collection("verification_codes").doc(email).delete();
-
-      res.json({ success: true });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
   // Debug route for Firebase availability
   app.get("/api/debug/firebase-check", async (req, res) => {
     try {
       const db = getDbAdmin();
+      // List collections as a proxy check for access
       const collections = await db.listCollections();
       const collectionNames = collections.map((c: any) => c.id);
       
@@ -321,10 +246,25 @@ async function setupServer() {
         authDomain: firebaseConfig.authDomain
       };
 
+      // Try to list ALL databases if possible via admin
+      let databases: any[] = [];
+      try {
+        // This might require different permissions, but useful to try
+        const client = admin.firestore();
+        // @ts-ignore
+        if (typeof client.listDatabases === 'function') {
+           // @ts-ignore
+           databases = await client.listDatabases();
+        }
+      } catch (dbErr) {
+        console.warn("Could not list databases:", dbErr);
+      }
+
       res.json({
         success: true,
         config,
         collections: collectionNames,
+        databases: databases.map((d: any) => d.id || d.name),
         env: {
           GOOGLE_CLOUD_PROJECT: process.env.GOOGLE_CLOUD_PROJECT,
           NODE_ENV: process.env.NODE_ENV
@@ -711,144 +651,7 @@ setupServer().catch(console.error);
 if (!process.env.VERCEL) {
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
-    startTelegramBridge().catch(console.error);
   });
 }
 
 export default app;
-
-/**
- * Telegram Bridge: Monitors Firestore for new notifications and posts them to Telegram.
- * This runs as a background task on the server.
- */
-async function startTelegramBridge() {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  let channelId = process.env.TELEGRAM_CHANNEL_ID;
-
-  if (!token || !channelId) {
-    console.log("--- [Telegram Bridge] Sozlamalar topilmadi. BOT_TOKEN va CHANNEL_ID kiritishni unutmang. ---");
-    return;
-  }
-
-  // Cleanup channelId if it's a full telegram URL
-  if (channelId.includes('t.me/')) {
-    channelId = '@' + channelId.split('t.me/')[1].replace('/', '');
-  }
-
-  console.log("--- [Telegram Bridge] Ishga tushirildi! Yangi kontent monitoringi faol. ---");
-  let lastProcessedId: string | null = null;
-  let bridgeActive: boolean = true;
-
-  // Warm up: get the latest ID to avoid double-posting old content on restart
-  try {
-    const dbInstance = getDbAdmin();
-    // Warm up logic: try with a simple get first if orderBy fails
-    const initialSnap = await dbInstance.collection('public_notifications').orderBy('createdAt', 'desc').limit(1).get();
-    
-    if (!initialSnap.empty) {
-      lastProcessedId = initialSnap.docs[0].id;
-      console.log(`[Telegram Bridge] Warm-up complete. Last ID: ${lastProcessedId}`);
-    } else {
-      console.log("[Telegram Bridge] No notifications found in database yet.");
-    }
-  } catch (e: any) {
-    const isNotFound = e.message && (e.message.includes('NOT_FOUND') || e.code === 5);
-    const isPermissionDenied = e.message && (e.message.includes('PERMISSION_DENIED') || e.code === 7);
-
-    if (isNotFound || isPermissionDenied) {
-      console.error(`[Telegram Bridge] Initial access failed (${isNotFound ? 'NOT_FOUND' : 'PERMISSION_DENIED'}). This usually means the database or collection is not yet ready.`);
-      
-      // Try one more time without orderBy just in case it's an index issue appearing as permission denied (rare but possible in some SDK versions)
-      try {
-        const dbInstance = getDbAdmin();
-        const fallbackSnap = await dbInstance.collection('public_notifications').limit(1).get();
-        if (!fallbackSnap.empty) {
-          lastProcessedId = fallbackSnap.docs[0].id;
-          console.log(`[Telegram Bridge] Warm-up complete (fallback). Last ID: ${lastProcessedId}`);
-        }
-      } catch (err2) {
-        console.warn("[Telegram Bridge] Fallback also failed. Bridge will continue but may miss initial state.");
-      }
-    } else {
-      console.error("[Telegram Bridge] Unexpected initialization error:", e);
-    }
-  }
-
-  // Periodic check function
-  const checkAndPost = async () => {
-    if (token === "YOUR_BOT_TOKEN") return; // Don't run with placeholders
-    
-    try {
-      const dbInstance = getDbAdmin();
-      const snap = await dbInstance.collection('public_notifications').orderBy('createdAt', 'desc').limit(10).get();
-      if (snap.empty) return;
-
-      const docs = snap.docs;
-      const index = docs.findIndex(doc => doc.id === lastProcessedId);
-      
-      let newDocs = [];
-      if (index === -1) {
-        if (!lastProcessedId) {
-           lastProcessedId = docs[0].id;
-           return;
-        } else {
-           newDocs = docs;
-        }
-      } else {
-        newDocs = docs.slice(0, index);
-      }
-
-      if (newDocs.length > 0) {
-        for (const doc of newDocs.reverse()) {
-          const data = doc.data();
-          const siteUrl = "https://animem.uz";
-          const title = data.type === 'anime' ? "🎬 YANGI ANIME (Animem Uz)!" : "🔔 YANGI QISM (Animem Uz)!";
-          const text = `<b>${title}</b>\n\n<b>${data.title}</b>\n${data.message}\n\n🌐 Saytda ko'rish: ${siteUrl}`;
-
-          try {
-            const url = `https://api.telegram.org/bot${token}/sendPhoto`;
-            const response = await fetch(url, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                chat_id: channelId,
-                photo: data.posterUrl,
-                caption: text,
-                parse_mode: 'HTML'
-              })
-            });
-            const result = await response.json();
-            if (result.ok) {
-              console.log(`[Telegram Bridge] Muvaffaqiyatli jo'natildi: ${data.title}`);
-            }
-          } catch (err) {
-            console.error("[Telegram Bridge] Fetch error:", err);
-          }
-          lastProcessedId = doc.id;
-        }
-      }
-    } catch (e: any) {
-      const isPermissionDenied = e.message && (e.message.includes('PERMISSION_DENIED') || e.code === 7);
-      if (isPermissionDenied) {
-        console.warn("[Telegram Bridge] O'qish huquqi yo'q (PERMISSION_DENIED). Navbatdagi siklda qayta urinib ko'riladi.");
-      } else {
-        console.error("[Telegram Bridge] Loop error:", e);
-      }
-    }
-  };
-
-  // Assign to global for trigger access
-  (global as any).triggerTelegramCheck = () => {
-    if (bridgeActive) checkAndPost();
-  };
-
-  // Run every 2 minutes for faster response
-  setInterval(() => {
-    if (bridgeActive) checkAndPost();
-  }, 1000 * 60 * 2);
-  
-  // Also run once immediately after 10 seconds to catch any missed updates
-  setTimeout(() => {
-    if (bridgeActive) checkAndPost();
-  }, 1000 * 10);
-}

@@ -39,18 +39,66 @@
 
     <!-- Schema.org JSON-LD -->
     <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "WebSite",
-      "name": "Animem Uz",
-      "url": "https://animem.uz/",
-      "description": "O'zbekistondagi eng yaxshi anime portali. Animelarni o'zbek va rus tillarida HD sifatda ko'ring.",
-      "potentialAction": {
-        "@type": "SearchAction",
-        "target": "https://animem.uz/?q={search_term_string}",
-        "query-input": "required name=search_term_string"
+    [
+      {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "Animem Uz",
+        "alternateName": "Animem.uz",
+        "url": "https://animem.uz/",
+        "description": "O'zbekistondagi eng yirik va sifatli anime portali. Uzubekcha va ruscha dublyajdagi animelar.",
+        "potentialAction": {
+          "@type": "SearchAction",
+          "target": "https://animem.uz/?q={search_term_string}",
+          "query-input": "required name=search_term_string"
+        }
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "name": "Animem Uz",
+        "url": "https://animem.uz",
+        "logo": "https://i.pinimg.com/736x/17/c6/88/17c688c6242fe4c3293be182924e73a3.jpg",
+        "contactPoint": {
+          "@type": "ContactPoint",
+          "contactType": "customer support",
+          "email": "support@animem.uz"
+        },
+        "sameAs": [
+          "https://t.me/animem_uz"
+        ]
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Bosh sahifa",
+            "item": "https://animem.uz/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Katalog",
+            "item": "https://animem.uz/catalog"
+          },
+          {
+            "@type": "ListItem",
+            "position": 3,
+            "name": "Yangiliklar",
+            "item": "https://animem.uz/news"
+          },
+          {
+            "@type": "ListItem",
+            "position": 4,
+            "name": "Xatchoplar",
+            "item": "https://animem.uz/watchlist"
+          }
+        ]
       }
-    }
+    ]
     </script>
 
     <!-- Google Fonts -->

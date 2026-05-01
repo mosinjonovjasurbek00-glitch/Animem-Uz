@@ -2,206 +2,45 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // 0. Default Deny Catch-all
+    // Default Deny
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // 0.1 Connection Test
-    match /_connection_test_/{docId} {
-      allow read: if true;
-    }
-
-    // ===============================================================
-    // Section 1: Global Safety Primitives
-    // ===============================================================
-
+    // Auth helpers
     function isSignedIn() { return request.auth != null; }
-    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
-    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
-    
-    // Admin check: Prioritizes verified email for high-privilege access
     function isAdmin() { 
-      return isSignedIn() && (
-        (request.auth.token.email != null && 
-         request.auth.token.email == "mosinjonovjasurbek00@gmail.com") ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
-      );
+      return isSignedIn() && (request.auth.token.email == "mosinjonovjasurbek00@gmail.com");
     }
 
-    function incoming() { return request.resource.data; }
-    function existing() { return resource.data; }
-
-    // ===============================================================
-    // Section 2: Entity Validation Blueprints
-    // ===============================================================
-
-    function isValidAnime(data) {
-      return data.keys().hasAll(['title', 'posterUrl', 'category', 'type', 'createdAt', 'authorUid']) &&
-             data.title is string && data.title.size() <= 200 &&
-             data.posterUrl is string && data.posterUrl.size() <= 1000 &&
-             data.category is string &&
-             data.type in ['movie', 'series'] &&
-             data.authorUid == request.auth.uid;
+    // Anime collection
+    match /anime/{document=**} {
+      allow read, get, list: if true;
+      allow write: if isAdmin();
+    }
+    // Specific match for comments to handle ownership
+    match /anime/{animeId}/comments/{commentId} {
+      allow read, get, list: if true;
+      allow create: if isSignedIn();
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
     }
 
-    function isValidEpisode(data) {
-      return data.keys().hasAll(['animeId', 'episodeNumber', 'videoUrl', 'createdAt']) &&
-             data.animeId is string && data.animeId.size() <= 64 &&
-             data.episodeNumber is number &&
-             data.videoUrl is string && data.videoUrl.size() <= 2000;
-    }
-
-    function isValidComment(data) {
-      return data.keys().hasAll(['userId', 'username', 'content', 'createdAt']) &&
-             data.userId == request.auth.uid &&
-             data.username is string && data.username.size() <= 100 &&
-             data.content is string && data.content.size() >= 1 && data.content.size() <= 2000;
-    }
-
-    function isValidChatMessage(data) {
-      return data.keys().hasAll(['userId', 'username', 'content', 'type', 'role', 'createdAt']) &&
-             data.userId == request.auth.uid &&
-             data.username is string && data.username.size() <= 100 &&
-             data.content is string && data.content.size() >= 1 && data.content.size() <= 2000 &&
-             data.type in ['text', 'sticker'] &&
-             data.createdAt == request.time;
-    }
-
-    function isValidNewsItem(data) {
-      return data.keys().hasAll(['text', 'language', 'createdAt']) &&
-             data.text is string && data.text.size() <= 500 &&
-             data.language in ['uz', 'ru'];
-    }
-
-    function isValidUser(data) {
-      return data.keys().hasAll(['uid', 'email', 'updatedAt']) &&
-             data.uid == request.auth.uid &&
-             data.email is string && data.email.size() <= 128;
-    }
-
-    // ===============================================================
-    // Section 3: Hardened Rulesets
-    // ===============================================================
-
-    match /users {
-      allow list: if isAdmin();
-    }
-    match /users/{userId} {
-      allow get: if isSignedIn() && (isOwner(userId) || isAdmin());
-      // Only admins can list users
-      allow list: if isAdmin();
-      
-      allow create: if isOwner(userId) && 
-                      isValidUser(incoming()) && 
-                      incoming().role == 'user'; // Prevent self-elevation on create
-      
-      allow update: if (
-        isAdmin() || 
-        (isOwner(userId) && 
-         isValidUser(incoming()) && 
-         incoming().role == existing().role) // Prevent self-elevation on update
-      );
-      
-      allow delete: if isAdmin();
-    }
-
-    match /anime {
-      allow list: if true;
-
-      match /{animeId} {
-        allow read: if true;
-        allow create: if isAdmin() && isValidAnime(incoming());
-        allow update: if isAdmin() || (
-          incoming().diff(existing()).affectedKeys().hasOnly(['views']) &&
-          incoming().views == existing().views + 1
-        );
-        allow delete: if isAdmin();
-
-        match /episodes/{episodeId} {
-          allow read: if true;
-          allow create: if isAdmin() && isValidEpisode(incoming());
-          allow update: if isAdmin() && isValidEpisode(incoming());
-          allow delete: if isAdmin();
-        }
-
-        match /comments/{commentId} {
-          allow read: if true;
-          allow create: if isSignedIn();
-          allow delete: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
-        }
-      }
-    }
-
-    match /watchlist/{id} {
-      // [Pillar 8: Secure List Queries] Force filter by userId
-      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow get: if isSignedIn() && existing().userId == request.auth.uid;
-      
-      allow create: if isSignedIn() && 
-                    incoming().userId == request.auth.uid &&
-                    exists(/databases/$(database)/documents/anime/$(incoming().animeId));
-      
-      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
-    }
-
-    match /history/{id} {
-      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow get: if isSignedIn() && existing().userId == request.auth.uid;
-      
-      allow create: if isSignedIn() && 
-                    incoming().userId == request.auth.uid &&
-                    incoming().updatedAt == request.time;
-      
-      allow update: if isSignedIn() && 
-                    existing().userId == request.auth.uid &&
-                    incoming().userId == request.auth.uid &&
-                    incoming().updatedAt == request.time &&
-                    incoming().diff(existing()).affectedKeys().hasOnly(['episodeId', 'episodeNumber', 'updatedAt']);
-      
-      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
-    }
-
-    match /messages/{messageId} {
-      allow create: if incoming().size() <= 10 && 
-                      incoming().message.size() <= 5000;
-      allow read, delete: if isAdmin();
-    }
-
-    match /public_notifications/{notificationId} {
-      allow read: if true;
-      allow create, delete: if isAdmin();
-    }
-
-    match /ads/{adId} {
-      allow read: if true;
+    // News Items
+    match /news_items/{document=**} {
+      allow read, get, list: if true;
       allow write: if isAdmin();
     }
 
-    match /fcm_tokens/{tokenId} {
-      allow read: if isAdmin();
-      allow write: if isSignedIn() && (incoming().userId == request.auth.uid || existing().userId == request.auth.uid);
+    // Users
+    match /users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
     }
 
-    match /chat_messages/{messageId} {
-      allow read: if true;
-      allow create: if isSignedIn() && isValidChatMessage(incoming()) && (
-        (incoming().role == 'admin' && isAdmin()) ||
-        (incoming().role == 'user')
-      );
-      allow delete: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
-    }
-
-    match /news_items/{itemId} {
-      allow read: if true;
-      allow create: if isAdmin() && isValidNewsItem(incoming()) && incoming().createdAt == request.time;
-      allow delete: if isAdmin();
-    }
-
-    match /verification_codes/{email} {
-      // Allow for debugging
-      allow read, write: if isSignedIn(); 
+    // Public Notifications
+    match /public_notifications/{id} {
+      allow read, list: if true;
+      allow write: if isAdmin();
     }
   }
 }
