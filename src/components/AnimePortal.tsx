@@ -1169,7 +1169,7 @@ export default function AnimePortal({
                     <div className="flex flex-col md:flex-row gap-8">
                       {/* Poster */}
                       <div className="shrink-0 w-full md:w-72 aspect-[2/3] rounded-2xl overflow-hidden border border-white/10 shadow-xl">
-                        <img src={selectedAnime.posterUrl} className="w-full h-full object-cover" referrerPolicy="no-referrer" alt={selectedAnime.title} onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400x600?text=Error'; }} />
+                        <img src={selectedAnime.posterUrl} className="w-full h-full object-cover" referrerPolicy="no-referrer" loading="lazy" style={{ backgroundColor: '#1f2937' }} alt={selectedAnime.title} onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400x600?text=Error'; }} />
                       </div>
 
                       {/* Info */}

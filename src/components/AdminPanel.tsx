@@ -153,12 +153,16 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
   }, []);
 
   useEffect(() => {
-    const movies = getLocalData('moviesList');
-    setAnimeList(movies.sort((a: AnimeDoc, b: AnimeDoc) => {
-      const getTs = (d: any) => typeof d === 'number' ? d : 0;
-      return getTs(b.createdAt) - getTs(a.createdAt);
-    }));
-    setLoading(false);
+    const q = query(collection(db, 'anime'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as AnimeDoc[];
+      setAnimeList(docs.sort((a, b) => {
+        const getTs = (d: any) => typeof d?.toMillis === 'function' ? d.toMillis() : 0;
+        return getTs(b.createdAt) - getTs(a.createdAt);
+      }));
+      setLoading(false);
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'anime'));
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -296,32 +300,37 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
 
       const animeData = {
         title, posterUrl: finalPosterUrl, description, category, rating, year,
-        type: contentType,
+        type: contentType, 
         authorUid: auth.currentUser?.uid,
         isBanner,
         language: animeLanguage,
-        updatedAt: Date.now()
+        updatedAt: serverTimestamp()
       };
 
-      const moviesList = getLocalData('moviesList');
-
       if (editingAnime) {
-        const updatedMovies = moviesList.map((m: any) => m.id === editingAnime.id ? {...m, ...animeData} : m);
-        saveLocalData('moviesList', updatedMovies);
-        setAnimeList(updatedMovies);
-        window.dispatchEvent(new CustomEvent('moviesListChanged', { detail: updatedMovies }));
+        await updateDoc(doc(db, 'anime', editingAnime.id), animeData);
         setEditingAnime(null);
       } else {
-        const newAnime = {
-          id: Date.now().toString(),
+        const newAnimeDoc = await addDoc(collection(db, 'anime'), {
           ...animeData,
           views: 0,
-          createdAt: Date.now()
-        };
-        const updatedMovies = [...moviesList, newAnime];
-        saveLocalData('moviesList', updatedMovies);
-        setAnimeList(updatedMovies);
-        window.dispatchEvent(new CustomEvent('moviesListChanged', { detail: updatedMovies }));
+          createdAt: serverTimestamp()
+        });
+
+        // Add public notification for new anime
+        const isRu = animeLanguage === 'ru';
+        const msg = isRu ? `${title} загружено на сайт! Смотрите прямо сейчас.` : `${title} saytga yuklandi! Hoziroq tomosha qiling.`;
+        await addDoc(collection(db, 'public_notifications'), {
+          type: 'anime',
+          title: title,
+          message: msg,
+          posterUrl: finalPosterUrl,
+          animeId: newAnimeDoc.id,
+          createdAt: serverTimestamp()
+        });
+
+        // Send actual Push Notification
+        await sendPush(title, msg, finalPosterUrl, newAnimeDoc.id);
       }
 
       setTitle(''); setPosterUrl(''); setPosterFile(null); setDescription('');
@@ -828,7 +837,7 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {animeList.map(anime => (
                     <div key={anime.id} className="glass rounded-2xl p-3 flex gap-4 items-center group relative overflow-hidden bg-white/[0.02]">
-                      <img src={anime.posterUrl} alt={anime.title} className="w-16 h-24 object-cover rounded-xl" onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/64x96?text=Error'; }} />
+                      <img src={anime.posterUrl} alt={anime.title} referrerPolicy="no-referrer" className="w-16 h-24 object-cover rounded-xl" onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/64x96?text=Error'; }} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           <span className={cn("px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest", anime.language === 'ru' ? "bg-red-500/20 text-red-400" : "bg-red-500/10 text-red-300")}>{anime.language === 'ru' ? 'RU' : 'UZ'}</span>

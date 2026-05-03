@@ -3,7 +3,6 @@ import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { HelmetProvider } from 'react-helmet-async';
 import { auth, db, syncUserToFirestore, handleFirestoreError, OperationType } from './firebase';
-import { getLocalData } from './lib/localData';
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { doc, getDoc, setDoc, collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { getRedirectResult } from 'firebase/auth';
@@ -132,34 +131,20 @@ function AppContent({
   }, [location.pathname]);
 
   useEffect(() => {
-    // Initial Load from local storage
-    const loadData = () => {
-        const localData = getLocalData('moviesList');
-        const sortedData = localData.sort((a: any, b: any) => {
-            const getTs = (d: any) => typeof d?.createdAt === 'number' ? d.createdAt : 0;
-            return getTs(b.createdAt) - getTs(a.createdAt);
-        });
-        setAnimeList(sortedData);
-        setDataLoading(false);
-    };
-    
-    loadData();
-
-    // Listen for storage changes from AdminPanel
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'moviesList') {
-        loadData();
-      }
-    };
-    const handleCustomChange = (e: any) => {
-        setAnimeList(e.detail);
-    };
-    window.addEventListener('storage', handleStorageChange);
-    window.addEventListener('moviesListChanged', handleCustomChange);
-    return () => {
-        window.removeEventListener('storage', handleStorageChange);
-        window.removeEventListener('moviesListChanged', handleCustomChange);
-    };
+    const qAnime = query(collection(db, 'movies'));
+    const unsubscribe = onSnapshot(qAnime, (snapshot) => {
+      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const sortedDocs = docs.sort((a: any, b: any) => {
+        const getTs = (d: any) => typeof d?.toMillis === 'function' ? d.toMillis() : (typeof d === 'number' ? d : 0);
+        return getTs(b.createdAt) - getTs(a.createdAt);
+      });
+      setAnimeList(sortedDocs);
+      setDataLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'movies');
+      setDataLoading(false);
+    });
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
