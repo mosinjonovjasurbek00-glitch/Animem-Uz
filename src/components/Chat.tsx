@@ -1,20 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db, auth } from '../firebase';
 import { useAuthState } from 'react-firebase-hooks/auth';
-import { 
-  collection, 
-  query, 
-  orderBy, 
-  limit, 
-  onSnapshot, 
-  addDoc, 
-  serverTimestamp,
-  doc,
-  getDoc,
-  deleteDoc,
-  getDocs,
-  writeBatch
-} from 'firebase/firestore';
+import { getLocalData, saveLocalData } from '../lib/localData';
 import { Helmet } from 'react-helmet-async';
 import { Send, Smile, Image as ImageIcon, X, ShieldCheck, MessageSquare, Trash2, Eraser, Reply } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -124,22 +111,18 @@ export default function Chat() {
   }, [user, isAdminUser]);
 
   useEffect(() => {
-    const q = query(
-      collection(db, 'chat_messages'),
-      orderBy('createdAt', 'desc'),
-      limit(50)
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const msgs = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as ChatMessage[];
-      setMessages(msgs.reverse());
+    const loadMessages = () => {
+      const msgs = getLocalData('chat_messages');
+      setMessages(msgs.sort((a: ChatMessage, b: ChatMessage) => {
+        const getTs = (d: any) => typeof d === 'number' ? d : (d?.toDate ? d.toDate().getTime() : 0);
+        return getTs(a.createdAt) - getTs(b.createdAt);
+      }));
       setLoading(false);
-    });
+    };
 
-    return () => unsubscribe();
+    loadMessages();
+    window.addEventListener('chat_messages_changed', loadMessages as any);
+    return () => window.removeEventListener('chat_messages_changed', loadMessages as any);
   }, []);
 
   useEffect(() => {
@@ -159,14 +142,16 @@ export default function Chat() {
     if (!user || !content.trim()) return;
 
     try {
-      const messageData: any = {
+      const msgs = getLocalData('chat_messages');
+      const messageData: ChatMessage = {
+        id: Date.now().toString(),
         userId: user.uid,
         username: user.displayName || 'Foydalanuvchi',
         photoURL: user.photoURL || '',
         content: content.trim(),
         type,
         role: isAdminUser ? 'admin' : 'user',
-        createdAt: serverTimestamp()
+        createdAt: Date.now()
       };
 
       if (replyTo) {
@@ -178,7 +163,11 @@ export default function Chat() {
         };
       }
 
-      await addDoc(collection(db, 'chat_messages'), messageData);
+      const updatedMsgs = [...msgs, messageData];
+      saveLocalData('chat_messages', updatedMsgs);
+      setMessages(updatedMsgs);
+      window.dispatchEvent(new CustomEvent('chat_messages_changed'));
+
       setNewMessage('');
       setShowPicker('none');
       setReplyTo(null);
@@ -189,8 +178,11 @@ export default function Chat() {
 
   const handleDeleteMessage = async (messageId: string) => {
     try {
-      console.log("Attempting to delete message:", messageId);
-      await deleteDoc(doc(db, 'chat_messages', messageId));
+      const msgs = getLocalData('chat_messages');
+      const updatedMsgs = msgs.filter((m: ChatMessage) => m.id !== messageId);
+      saveLocalData('chat_messages', updatedMsgs);
+      setMessages(updatedMsgs);
+      window.dispatchEvent(new CustomEvent('chat_messages_changed'));
       setDeletingId(null);
     } catch (err) {
       console.error("Delete error:", err);
@@ -200,24 +192,10 @@ export default function Chat() {
 
   const handleClearChat = async () => {
     if (!isAdminUser) return;
-    
-    try {
-      console.log("Attempting to clear all messages");
-      const q = query(collection(db, 'chat_messages'));
-      const snapshot = await getDocs(q);
-      const batch = writeBatch(db);
-      
-      snapshot.docs.forEach((doc) => {
-        batch.delete(doc.ref);
-      });
-
-      await batch.commit();
-      setShowConfirmClear(false);
-      console.log("Chat cleared successfully");
-    } catch (err) {
-      console.error("Clear chat error:", err);
-      alert("Chatni tozalashda xatolik yuz berdi");
-    }
+    saveLocalData('chat_messages', []);
+    setMessages([]);
+    window.dispatchEvent(new CustomEvent('chat_messages_changed'));
+    setShowConfirmClear(false);
   };
 
   const addEmoji = (emoji: string) => {

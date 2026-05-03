@@ -4,6 +4,7 @@ import { useNavigate, useParams, useLocation, Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { slugify } from '../lib/slugs';
 import { db, auth, loginWithGoogle } from '../firebase';
+import { getLocalData, saveLocalData } from '../lib/localData';
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { collection, query, orderBy, onSnapshot, doc, getDoc, setDoc, deleteDoc, writeBatch, serverTimestamp, where, increment, getDocs, addDoc, limit } from 'firebase/firestore';
 import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, Monitor, Settings, Star, Calendar, Clock, Search, Eye, X as CloseIcon, Loader2, Heart, Film, Sparkles, ChevronRight, Activity, TrendingUp, Check, ArrowLeft, MessageSquare, Send, User, Trash2, Filter, ChevronDown, RotateCcw, XCircle, Share2, Copy, Home, LayoutGrid, Bookmark, LogOut, Plus, Smile } from 'lucide-react';
@@ -505,7 +506,7 @@ export default function AnimePortal({
   useEffect(() => {
     if (!selectedAnime) return;
     setLoadingEpisodes(true);
-    const q = query(collection(db, 'anime', selectedAnime.id, 'episodes'), orderBy('episodeNumber', 'asc'));
+    const q = query(collection(db, 'movies', selectedAnime.id, 'episodes'), orderBy('episodeNumber', 'asc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as EpisodeDoc[];
       setEpisodes(docs);
@@ -554,8 +555,9 @@ export default function AnimePortal({
 
   if (activeTab === 'news') {
     filteredAnime = filteredAnime.sort((a, b) => {
-      const aTime = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
-      const bTime = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+      const getTs = (d: any) => typeof d === 'number' ? d : (d?.toMillis ? d.toMillis() : (d?.toDate ? d.toDate().getTime() : 0));
+      const aTime = getTs(a.createdAt);
+      const bTime = getTs(b.createdAt);
       return bTime - aTime;
     });
   }
@@ -614,16 +616,17 @@ export default function AnimePortal({
       return;
     }
 
-    const q = query(
-      collection(db, 'anime', selectedAnime.id, 'comments'),
-      orderBy('createdAt', 'desc')
-    );
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setComments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as CommentDoc[]);
-    }, (err) => {
-      console.error("Comments fetch error:", err);
-    });
-    return () => unsubscribe();
+    const loadComments = () => {
+      const allComments = getLocalData(`comments_${selectedAnime.id}`);
+      setComments(allComments.sort((a: CommentDoc, b: CommentDoc) => {
+        const getTs = (d: any) => typeof d === 'number' ? d : (d?.toDate ? d.toDate().getTime() : 0);
+        return getTs(b.createdAt) - getTs(a.createdAt);
+      }));
+    };
+
+    loadComments();
+    window.addEventListener(`comments_${selectedAnime.id}_changed`, loadComments as any);
+    return () => window.removeEventListener(`comments_${selectedAnime.id}_changed`, loadComments as any);
   }, [selectedAnime, modalMode]);
 
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -633,18 +636,21 @@ export default function AnimePortal({
     if (!user || !selectedAnime || !newComment.trim()) return;
     setSubmittingComment(true);
     try {
-      // Get the latest profile data from Firestore
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
-      const customUsername = userDoc.exists() ? userDoc.data().username : null;
-      const customPhotoURL = userDoc.exists() ? (userDoc.data().photoURL || userDoc.data().avatarUrl) : null;
-
-      await addDoc(collection(db, 'anime', selectedAnime.id, 'comments'), {
+      const newCommentData: CommentDoc = {
+        id: Date.now().toString(),
         userId: user.uid,
-        username: customUsername || user.displayName || user.email?.split('@')[0] || user.phoneNumber || 'Foydalanuvchi',
-        photoURL: customPhotoURL || user.photoURL || '',
+        username: user.displayName || user.email?.split('@')[0] || user.phoneNumber || 'Foydalanuvchi',
+        photoURL: user.photoURL || '',
         content: newComment.trim(),
-        createdAt: serverTimestamp()
-      });
+        createdAt: Date.now()
+      };
+
+      const allComments = getLocalData(`comments_${selectedAnime.id}`);
+      const updatedComments = [newCommentData, ...allComments];
+      saveLocalData(`comments_${selectedAnime.id}`, updatedComments);
+      setComments(updatedComments);
+      window.dispatchEvent(new CustomEvent(`comments_${selectedAnime.id}_changed`));
+      
       setNewComment('');
     } catch (err: any) {
       console.error("Comment error:", err);
@@ -933,7 +939,12 @@ export default function AnimePortal({
                   )}
                </div>
 
-               {filteredAnime.length > 0 ? (
+               {loading ? (
+                 <div className="py-40 flex flex-col items-center justify-center text-center space-y-8">
+                     <Loader2 className="animate-spin text-red-500 w-12 h-12" />
+                     <h3 className="text-xl font-black uppercase tracking-tighter text-white">{t('loadingString')}</h3>
+                 </div>
+               ) : filteredAnime.length > 0 ? (
                  <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-x-6 gap-y-10">
                     {filteredAnime.map(anime => (
                       <div 
@@ -1158,7 +1169,7 @@ export default function AnimePortal({
                     <div className="flex flex-col md:flex-row gap-8">
                       {/* Poster */}
                       <div className="shrink-0 w-full md:w-72 aspect-[2/3] rounded-2xl overflow-hidden border border-white/10 shadow-xl">
-                        <img src={selectedAnime.posterUrl} className="w-full h-full object-cover" referrerPolicy="no-referrer" alt={selectedAnime.title} />
+                        <img src={selectedAnime.posterUrl} className="w-full h-full object-cover" referrerPolicy="no-referrer" alt={selectedAnime.title} onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400x600?text=Error'; }} />
                       </div>
 
                       {/* Info */}
@@ -1343,7 +1354,7 @@ export default function AnimePortal({
                                              </div>
                                              <p className="text-slate-400 text-sm break-words whitespace-pre-wrap">{comment.content}</p>
                                              <span className="text-[10px] text-slate-500 mt-3 block font-medium">
-                                                 {comment.createdAt ? new Date(comment.createdAt.toMillis()).toLocaleDateString() : ''}
+                                                 {comment.createdAt ? new Date(typeof comment.createdAt === 'number' ? comment.createdAt : comment.createdAt.toMillis ? comment.createdAt.toMillis() : comment.createdAt.toDate().getTime()).toLocaleDateString() : ''}
                                              </span>
                                          </div>
                                      </div>

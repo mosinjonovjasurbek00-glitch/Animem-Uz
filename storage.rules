@@ -1,9 +1,11 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
+    
     function isAdmin() {
+      // Just check if logged in and matches email directly.
       return request.auth != null && 
-        (request.auth.token.email.lower() == "mosinjonovjasurbek00@gmail.com");
+             request.auth.token.email == "mosinjonovjasurbek00@gmail.com";
     }
 
     match /wallpapers/{allPaths=**} {
@@ -14,9 +16,16 @@ service firebase.storage {
       allow read: if true;
       allow write: if isAdmin();
     }
+    match /posters/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /episodes/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
     match /avatars/{fileName} {
       allow read: if true;
-      // Allow users to upload their own avatar. Ensure the filename starts with their UID (checked in JS side ideally, but basic size check here is good)
       allow write: if request.auth != null && request.resource.size < 5 * 1024 * 1024 && request.resource.contentType.matches('image/.*');
     }
   }

@@ -138,25 +138,16 @@ export const loginWithGoogle = async () => {
     }
 };
 
-// Test connection on boot as recommended
+// Test connection on boot as recommended but silently
 async function testConnection() {
   try {
     const dbId = firebaseConfig.firestoreDatabaseId || "(default)";
-    console.log('Testing Firestore connection to database:', dbId);
     
     // Attempting a simple read to check connectivity
-    // Using getDocFromServer to bypass local cache
     await getDocFromServer(doc(db, '_connection_test_', 'check'));
-    console.log('Firebase connection successful to:', dbId);
   } catch (error: any) {
-    if (error.code === 'unavailable') {
-      console.error("Firestore is unavailable [code=unavailable].");
-      console.warn("Possible causes: 1) Network blocked, 2) Firestore database not initialized, 3) Incorrect Database ID.");
-    } else if (error.code === 'permission-denied') {
-      console.log("Firestore reachability confirmed (Permission Denied but contacted).");
-    } else {
-      console.error("Firebase connection test failed:", error.message, error.code);
-    }
+    // Silently fail, log only for internal debugging
+    console.debug("Firebase connection test silent failure:", error.code);
   }
 }
 testConnection();

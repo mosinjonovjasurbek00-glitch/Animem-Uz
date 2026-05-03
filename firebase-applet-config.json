@@ -3,7 +3,7 @@
   "appId": "1:4531945421:web:d8e41083a284f8ba8e0e84",
   "apiKey": "AIzaSyBPdy3VuZF_5whxL_drqqqtt8b5n5IUxbo",
   "authDomain": "stone-dispatch-477517-k6.firebaseapp.com",
-  "firestoreDatabaseId": "anime",
+  "firestoreDatabaseId": "(default)",
   "storageBucket": "stone-dispatch-477517-k6.firebasestorage.app",
   "messagingSenderId": "4531945421",
   "measurementId": ""

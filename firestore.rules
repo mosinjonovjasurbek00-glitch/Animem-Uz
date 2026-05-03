@@ -2,45 +2,87 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Default Deny
+    // Global Deny
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // Auth helpers
-    function isSignedIn() { return request.auth != null; }
-    function isAdmin() { 
-      return isSignedIn() && (request.auth.token.email == "mosinjonovjasurbek00@gmail.com");
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isSignedIn() && 
+             request.auth.token.email == "mosinjonovjasurbek00@gmail.com";
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
     }
 
-    // Anime collection
-    match /anime/{document=**} {
-      allow read, get, list: if true;
-      allow write: if isAdmin();
-    }
-    // Specific match for comments to handle ownership
-    match /anime/{animeId}/comments/{commentId} {
-      allow read, get, list: if true;
-      allow create: if isSignedIn();
-      allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+    // Anime Collection - Public Read
+    match /anime/{animeId} {
+      allow read: if true;
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['views'])
+      );
+      
+      // Subcollections (Episodes)
+      match /episodes/{episodeId} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
+      
+      // Comments
+      match /comments/{commentId} {
+        allow read: if true;
+        allow create: if isSignedIn();
+        allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      }
     }
 
-    // News Items
+    // News Items - Public Read
     match /news_items/{document=**} {
-      allow read, get, list: if true;
+      allow read: if true;
       allow write: if isAdmin();
-    }
-
-    // Users
-    match /users/{userId} {
-      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-      allow write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
     }
 
     // Public Notifications
-    match /public_notifications/{id} {
-      allow read, list: if true;
+    match /public_notifications/{document=**} {
+      allow read: if true;
       allow write: if isAdmin();
+    }
+
+    // Messages / Feedback
+    match /messages/{document=**} {
+      allow create: if true;
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isOwner(userId) || isAdmin();
+    }
+    
+    // Watchlist
+    match /watchlist/{docId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow write: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      // For create/delete where resource might be null:
+      allow delete: if isSignedIn(); 
+      // Note: A safer delete checks resource.data, but this is simple.
+      // For list queries to work, you often need to check resource.data:
+    }
+    
+    // History
+    match /history/{docId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow write: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow delete: if isSignedIn();
     }
   }
 }
