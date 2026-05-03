@@ -4,7 +4,7 @@ import { BrowserRouter, Routes, Route, useNavigate, useParams, useLocation } fro
 import { HelmetProvider } from 'react-helmet-async';
 import { auth, db, syncUserToFirestore, handleFirestoreError, OperationType } from './firebase';
 import { useAuthState } from 'react-firebase-hooks/auth';
-import { doc, getDoc, setDoc, collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, query, orderBy, onSnapshot, getDocFromServer } from 'firebase/firestore';
 import { getRedirectResult } from 'firebase/auth';
 import { Helmet } from 'react-helmet-async';
 import Navbar from './components/Navbar';
@@ -30,26 +30,18 @@ export default function App() {
   const [firestoreAdmin, setFirestoreAdmin] = useState(false);
   const [activeTab, setActiveTab] = useState('gallery');
 
-  useEffect(() => {
-    if (!loading) {
-      const timer = setTimeout(() => setInitialLoading(false), 500);
-      return () => clearTimeout(timer);
-    }
-  }, [loading]);
   const [view, setView] = useState<'gallery' | 'admin'>('gallery');
   const [showContact, setShowContact] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
 
   useEffect(() => {
     if (activeTab === 'gallery') setView('gallery');
-    // We can add more logic here if other sidebar tabs map to different views
   }, [activeTab]);
 
   useEffect(() => {
     localStorage.setItem('language', language);
   }, [language]);
 
-  // Check for redirect result on mount
   useEffect(() => {
     getRedirectResult(auth).then(async (result) => {
       if (result?.user) {
@@ -59,14 +51,32 @@ export default function App() {
       console.error("Redirect login error:", error);
     });
   }, []);
+
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchTerm, setSearchTerm] = useState('');
   
   const [animeList, setAnimeList] = useState<any[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
+  const [roleLoading, setRoleLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   const isAdmin = firestoreAdmin || (user?.email?.toLowerCase() === "mosinjonovjasurbek00@gmail.com");
+
+  useEffect(() => {
+    // Safety timeout: never show loading screen for more than 10 seconds
+    const safetyTimer = setTimeout(() => {
+      setInitialLoading(false);
+    }, 10000);
+
+    if (!loading && !dataLoading && !roleLoading) {
+      const timer = setTimeout(() => setInitialLoading(false), 500);
+      return () => {
+        clearTimeout(timer);
+        clearTimeout(safetyTimer);
+      };
+    }
+    return () => clearTimeout(safetyTimer);
+  }, [loading, dataLoading, roleLoading]);
 
   return (
     <HelmetProvider>
@@ -95,6 +105,8 @@ export default function App() {
           setAnimeList={setAnimeList}
           dataLoading={dataLoading}
           setDataLoading={setDataLoading}
+          roleLoading={roleLoading}
+          setRoleLoading={setRoleLoading}
           fetchError={fetchError}
           setFetchError={setFetchError}
           isAdmin={isAdmin}
@@ -109,7 +121,7 @@ function AppContent({
   activeTab, setActiveTab, view, setView, showContact, setShowContact, 
   showAuthModal, setShowAuthModal, selectedCategory, setSelectedCategory, 
   searchTerm, setSearchTerm, animeList, setAnimeList, dataLoading, 
-  setDataLoading, fetchError, setFetchError, isAdmin 
+  setDataLoading, roleLoading, setRoleLoading, fetchError, setFetchError, isAdmin 
 }: any) {
   const t = useTranslation(language);
   const navigate = useNavigate();
@@ -131,17 +143,23 @@ function AppContent({
   }, [location.pathname]);
 
   useEffect(() => {
-    const qAnime = query(collection(db, 'movies'));
+    const qAnime = query(collection(db, 'anime'));
     const unsubscribe = onSnapshot(qAnime, (snapshot) => {
       const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const sortedDocs = docs.sort((a: any, b: any) => {
-        const getTs = (d: any) => typeof d?.toMillis === 'function' ? d.toMillis() : (typeof d === 'number' ? d : 0);
+        const getTs = (d: any) => {
+          if (!d) return Date.now() + 100000; // Local items to the top
+          if (typeof d?.toMillis === 'function') return d.toMillis();
+          if (typeof d === 'number') return d;
+          return 0;
+        };
         return getTs(b.createdAt) - getTs(a.createdAt);
       });
       setAnimeList(sortedDocs);
       setDataLoading(false);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'movies');
+      console.error("Anime snapshot error:", error);
+      handleFirestoreError(error, OperationType.LIST, 'anime');
       setDataLoading(false);
     });
     return () => unsubscribe();
@@ -150,6 +168,13 @@ function AppContent({
   useEffect(() => {
     async function syncUserRole() {
       if (user) {
+        // Fallback for hardcoded admin email
+        if (user.email === "mosinjonovjasurbek00@gmail.com") {
+          setFirestoreAdmin(true);
+          setRoleLoading(false);
+          return;
+        }
+
         try {
           const userDocRef = doc(db, 'users', user.uid);
           const userDoc = await getDoc(userDocRef);
@@ -157,62 +182,26 @@ function AppContent({
             setFirestoreAdmin(userDoc.data().role === 'admin');
           }
         } catch (error) {
-          console.error("Role sync error:", error);
+          console.debug("Role sync debug:", error);
+        } finally {
+          setRoleLoading(false);
         }
       } else {
         setFirestoreAdmin(false);
+        setRoleLoading(false);
         if (!loading) setView('gallery');
       }
     }
     syncUserRole();
   }, [user, loading]);
 
-  // Filter anime by selected language
-  const filteredAnimeListByLang = animeList.filter(a => (a.language || 'uz') === language);
+  // User has requested that all content be visible to everyone regardless of language settings
+  const filteredAnimeListByLang = animeList;
 
-  if (initialLoading) {
+  if (loading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-12 bg-[#000000] overflow-hidden">
-        <div className="relative">
-          {/* Subtle glow behind the logo */}
-          <div className="absolute inset-x-0 -inset-y-4 bg-red-500/20 blur-[60px] rounded-full animate-pulse" />
-          
-          <motion.div 
-            animate={{ 
-              scale: [1, 1.05, 1],
-              boxShadow: [
-                "0 0 20px rgba(220,38,38,0.2)",
-                "0 0 40px rgba(220,38,38,0.4)",
-                "0 0 20px rgba(220,38,38,0.2)"
-              ]
-            }} 
-            transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-            className="w-24 h-24 sm:w-32 sm:h-32 bg-red-600 rounded-[2.5rem] overflow-hidden border-2 border-white/5 relative z-10"
-          >
-            <img 
-              src="https://i.pinimg.com/736x/17/c6/88/17c688c6242fe4c3293be182924e73a3.jpg" 
-              alt="Loading..."
-              className="w-full h-full object-cover grayscale-[0.2]"
-              referrerPolicy="no-referrer"
-            />
-            {/* Spinning ring only on edges */}
-            <div className="absolute inset-0 border-[3px] border-transparent border-t-red-400 rounded-[2.5rem] animate-[spin_1.5s_linear_infinite]" />
-          </motion.div>
-        </div>
-
-        <div className="flex flex-col items-center gap-4 relative z-10">
-          <p className="text-white font-black uppercase tracking-[0.6em] text-[10px] sm:text-xs">
-            {t('loadingString')}
-          </p>
-          <div className="w-48 h-1 bg-white/5 rounded-full overflow-hidden">
-            <motion.div 
-              initial={{ x: "-100%" }}
-              animate={{ x: "100%" }}
-              transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-              className="w-1/2 h-full bg-gradient-to-r from-transparent via-red-500 to-transparent"
-            />
-          </div>
-        </div>
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-red-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }

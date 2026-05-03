@@ -4,7 +4,6 @@ import { useNavigate, useParams, useLocation, Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { slugify } from '../lib/slugs';
 import { db, auth, loginWithGoogle } from '../firebase';
-import { getLocalData, saveLocalData } from '../lib/localData';
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { collection, query, orderBy, onSnapshot, doc, getDoc, setDoc, deleteDoc, writeBatch, serverTimestamp, where, increment, getDocs, addDoc, limit } from 'firebase/firestore';
 import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, Monitor, Settings, Star, Calendar, Clock, Search, Eye, X as CloseIcon, Loader2, Heart, Film, Sparkles, ChevronRight, Activity, TrendingUp, Check, ArrowLeft, MessageSquare, Send, User, Trash2, Filter, ChevronDown, RotateCcw, XCircle, Share2, Copy, Home, LayoutGrid, Bookmark, LogOut, Plus, Smile } from 'lucide-react';
@@ -506,7 +505,7 @@ export default function AnimePortal({
   useEffect(() => {
     if (!selectedAnime) return;
     setLoadingEpisodes(true);
-    const q = query(collection(db, 'movies', selectedAnime.id, 'episodes'), orderBy('episodeNumber', 'asc'));
+    const q = query(collection(db, 'anime', selectedAnime.id, 'episodes'), orderBy('episodeNumber', 'asc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as EpisodeDoc[];
       setEpisodes(docs);
@@ -616,17 +615,14 @@ export default function AnimePortal({
       return;
     }
 
-    const loadComments = () => {
-      const allComments = getLocalData(`comments_${selectedAnime.id}`);
-      setComments(allComments.sort((a: CommentDoc, b: CommentDoc) => {
-        const getTs = (d: any) => typeof d === 'number' ? d : (d?.toDate ? d.toDate().getTime() : 0);
-        return getTs(b.createdAt) - getTs(a.createdAt);
-      }));
-    };
-
-    loadComments();
-    window.addEventListener(`comments_${selectedAnime.id}_changed`, loadComments as any);
-    return () => window.removeEventListener(`comments_${selectedAnime.id}_changed`, loadComments as any);
+    const q = query(
+      collection(db, 'anime', selectedAnime.id, 'comments'),
+      orderBy('createdAt', 'desc')
+    );
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setComments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as CommentDoc[]);
+    });
+    return () => unsubscribe();
   }, [selectedAnime, modalMode]);
 
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -636,20 +632,13 @@ export default function AnimePortal({
     if (!user || !selectedAnime || !newComment.trim()) return;
     setSubmittingComment(true);
     try {
-      const newCommentData: CommentDoc = {
-        id: Date.now().toString(),
+      await addDoc(collection(db, 'anime', selectedAnime.id, 'comments'), {
         userId: user.uid,
         username: user.displayName || user.email?.split('@')[0] || user.phoneNumber || 'Foydalanuvchi',
         photoURL: user.photoURL || '',
         content: newComment.trim(),
-        createdAt: Date.now()
-      };
-
-      const allComments = getLocalData(`comments_${selectedAnime.id}`);
-      const updatedComments = [newCommentData, ...allComments];
-      saveLocalData(`comments_${selectedAnime.id}`, updatedComments);
-      setComments(updatedComments);
-      window.dispatchEvent(new CustomEvent(`comments_${selectedAnime.id}_changed`));
+        createdAt: serverTimestamp()
+      });
       
       setNewComment('');
     } catch (err: any) {

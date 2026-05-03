@@ -1,15 +1,12 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, sendEmailVerification, signInWithCustomToken } from 'firebase/auth';
-import { initializeFirestore, doc, setDoc, serverTimestamp, getDocFromServer, updateDoc } from 'firebase/firestore';
+import { initializeFirestore, doc, setDoc, serverTimestamp, updateDoc, getDocFromServer } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getMessaging, onMessage } from 'firebase/messaging';
 import firebaseConfig from '../firebase-applet-config.json';
 
-console.log('Firebase attempting to initialize with Project ID:', firebaseConfig.projectId);
-
 const app = initializeApp(firebaseConfig);
 
-// Using initializeFirestore with experimentalForceLongPolling to avoid WebSocket issues in sandboxed environments
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
 }, firebaseConfig.firestoreDatabaseId || "(default)");
@@ -110,8 +107,9 @@ export const syncUserToFirestore = async (user: any) => {
       updatedAt: serverTimestamp()
     };
 
-    // Only set default role if user doesn't exist
-    if (!userSnap?.exists()) {
+    if (user.email === "mosinjonovjasurbek00@gmail.com") {
+      userData.role = 'admin';
+    } else if (!userSnap?.exists()) {
       userData.role = 'user';
     }
 

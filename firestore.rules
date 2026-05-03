@@ -14,7 +14,8 @@ service cloud.firestore {
     
     function isAdmin() {
       return isSignedIn() && 
-             request.auth.token.email == "mosinjonovjasurbek00@gmail.com";
+             (request.auth.token.email == "mosinjonovjasurbek00@gmail.com" ||
+              request.auth.token.email.lower() == "mosinjonovjasurbek00@gmail.com");
     }
     
     function isOwner(userId) {
@@ -24,10 +25,7 @@ service cloud.firestore {
     // Anime Collection - Public Read
     match /anime/{animeId} {
       allow read: if true;
-      allow create, delete: if isAdmin();
-      allow update: if isAdmin() || (
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['views'])
-      );
+      allow write: if isAdmin();
       
       // Subcollections (Episodes)
       match /episodes/{episodeId} {
@@ -60,6 +58,13 @@ service cloud.firestore {
       allow create: if true;
       allow read: if isAdmin();
       allow write: if isAdmin();
+    }
+
+    // Chat Messages
+    match /chat_messages/{messageId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow delete: if isAdmin();
     }
 
     // Users Collection

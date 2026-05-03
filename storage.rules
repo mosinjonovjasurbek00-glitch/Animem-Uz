@@ -5,7 +5,8 @@ service firebase.storage {
     function isAdmin() {
       // Just check if logged in and matches email directly.
       return request.auth != null && 
-             request.auth.token.email == "mosinjonovjasurbek00@gmail.com";
+             (request.auth.token.email == "mosinjonovjasurbek00@gmail.com" ||
+              request.auth.token.email.lower() == "mosinjonovjasurbek00@gmail.com");
     }
 
     match /wallpapers/{allPaths=**} {

@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db, auth, storage, handleFirestoreError, OperationType } from '../firebase';
-import { getLocalData, saveLocalData } from '../lib/localData';
 import { collection, addDoc, deleteDoc, doc, query, onSnapshot, serverTimestamp, where, updateDoc, getDocs, orderBy, writeBatch, getDoc, setDoc } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { Helmet } from 'react-helmet-async';
@@ -124,12 +123,17 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
   const [epOpeningEnd, setEpOpeningEnd] = useState('');     // Formatted as MM:SS
 
   const sendPush = async (title: string, body: string, imageUrl: string, animeId: string) => {
+    // Non-blocking call to prevents hanging the UI
     try {
-      await axios.post('/api/admin/broadcast-notification', { title, body, imageUrl, animeId });
-      // Trigger Telegram bridge immediately
-      await axios.post('/api/admin/trigger-telegram');
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+      
+      axios.post('/api/admin/broadcast-notification', { title, body, imageUrl, animeId }, { signal: controller.signal })
+        .then(() => axios.post('/api/admin/trigger-telegram', {}, { signal: controller.signal }))
+        .catch(e => console.warn("Background notification failed:", e.message))
+        .finally(() => clearTimeout(timeoutId));
     } catch (err) {
-      console.error("Failed to send push/telegram notification:", err);
+      console.warn("Failed to initiate push/telegram notification:", err);
     }
   };
 
@@ -138,7 +142,7 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
   useEffect(() => {
     const checkTelegram = async () => {
       try {
-        const res = await axios.get('/api/debug/telegram-test');
+        const res = await axios.get('/api/debug/telegram-test', { timeout: 5000 });
         if (res.data.botInfo?.ok) {
           setTelegramStatus({
             connected: true,
@@ -157,11 +161,20 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as AnimeDoc[];
       setAnimeList(docs.sort((a, b) => {
-        const getTs = (d: any) => typeof d?.toMillis === 'function' ? d.toMillis() : 0;
+        const getTs = (d: any) => {
+          if (!d) return 0;
+          if (typeof d?.toMillis === 'function') return d.toMillis();
+          if (d instanceof Date) return d.getTime();
+          return 0;
+        };
         return getTs(b.createdAt) - getTs(a.createdAt);
       }));
       setLoading(false);
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'anime'));
+    }, (error) => {
+      console.error("Anime snapshot error:", error);
+      handleFirestoreError(error, OperationType.LIST, 'anime');
+      setLoading(false);
+    });
     return () => unsubscribe();
   }, []);
 
@@ -201,12 +214,12 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
       return;
     }
     const q = query(
-      collection(db, 'movies', selectedAnimeForEpisodes.id, 'episodes'),
+      collection(db, 'anime', selectedAnimeForEpisodes.id, 'episodes'),
       orderBy('episodeNumber', 'asc')
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setEpisodes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as EpisodeDoc[]);
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'movies/episodes'));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'anime/episodes'));
     return () => unsubscribe();
   }, [selectedAnimeForEpisodes]);
 
@@ -282,18 +295,20 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
     setError(null);
     try {
       let finalPosterUrl = posterUrl;
-      // Poster logic... (keep existing)
       if (posterFile) {
+        console.log("[AdminPanel] Uploading poster file:", posterFile.name);
         try {
           finalPosterUrl = await handlePosterUpload(posterFile);
-        } catch (uploadError) {
-          console.error("Poster upload failed:", uploadError);
+          console.log("[AdminPanel] Poster uploaded successfully:", finalPosterUrl);
+        } catch (uploadError: any) {
+          console.error("[AdminPanel] Poster upload failed:", uploadError);
           if (!finalPosterUrl) {
              finalPosterUrl = 'https://via.placeholder.com/400x600?text=Upload+Error';
-             alert("Rasm yuklashda xatolik.");
+             alert("Rasm yuklashda xatolik: " + uploadError.message);
           }
         }
       }
+      
       if (!finalPosterUrl) {
          finalPosterUrl = 'https://via.placeholder.com/400x600?text=No+Poster';
       }
@@ -307,6 +322,7 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
         updatedAt: serverTimestamp()
       };
 
+      console.log("[AdminPanel] Saving anime to Firestore...", animeData);
       if (editingAnime) {
         await updateDoc(doc(db, 'anime', editingAnime.id), animeData);
         setEditingAnime(null);
@@ -317,20 +333,23 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
           createdAt: serverTimestamp()
         });
 
-        // Add public notification for new anime
+        // Notify
         const isRu = animeLanguage === 'ru';
         const msg = isRu ? `${title} загружено на сайт! Смотрите прямо сейчас.` : `${title} saytga yuklandi! Hoziroq tomosha qiling.`;
-        await addDoc(collection(db, 'public_notifications'), {
-          type: 'anime',
-          title: title,
-          message: msg,
-          posterUrl: finalPosterUrl,
-          animeId: newAnimeDoc.id,
-          createdAt: serverTimestamp()
-        });
-
-        // Send actual Push Notification
-        await sendPush(title, msg, finalPosterUrl, newAnimeDoc.id);
+        
+        try {
+          await addDoc(collection(db, 'public_notifications'), {
+            type: 'anime',
+            title: title,
+            message: msg,
+            posterUrl: finalPosterUrl,
+            animeId: newAnimeDoc.id,
+            createdAt: serverTimestamp()
+          });
+          await sendPush(title, msg, finalPosterUrl, newAnimeDoc.id);
+        } catch (notifErr: any) {
+          console.warn("[AdminPanel] Notification failed but anime was saved:", notifErr.message);
+        }
       }
 
       setTitle(''); setPosterUrl(''); setPosterFile(null); setDescription('');
@@ -354,6 +373,7 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
       let finalVideoUrl = epVideoUrl;
       // Upload file to Firebase Storage if selected
       if (epVideoFile) {
+        console.log("[AdminPanel] Uploading video file:", epVideoFile.name);
         setUploadProgress(0);
         try {
           const storageRef = ref(storage, `episodes/${selectedAnimeForEpisodes.id}/${Date.now()}_${epVideoFile.name}`);
@@ -366,11 +386,12 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
               () => getDownloadURL(uploadTask.snapshot.ref).then(resolve).catch(reject)
             );
           });
-        } catch (uploadError) {
-          console.error("Episode upload failed:", uploadError);
+          console.log("[AdminPanel] Video uploaded successfully:", finalVideoUrl);
+        } catch (uploadError: any) {
+          console.error("[AdminPanel] Episode upload failed:", uploadError);
           if (!finalVideoUrl) {
             finalVideoUrl = 'https://www.w3schools.com/html/mov_bbb.mp4';
-            alert("Videoni yuklashda xatolik yuz berdi. Qo'shish to'xtab qolmasligi uchun vaqtinchalik video ulandi, keyin URL orqali o'zgartirishingiz mumkin.");
+            alert("Videoni yuklashda xatolik yuz berdi: " + uploadError.message);
           }
         }
         setUploadProgress(null);
@@ -394,6 +415,7 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
       if (openingStartSec !== undefined) epData.openingStart = openingStartSec;
       if (openingEndSec !== undefined) epData.openingEnd = openingEndSec;
 
+      console.log("[AdminPanel] Saving episode to Firestore...", epData);
       if (editingEpisode) {
         await updateDoc(doc(db, 'anime', selectedAnimeForEpisodes.id, 'episodes', editingEpisode.id), epData);
         setEditingEpisode(null);
@@ -404,26 +426,23 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
         });
 
         // Add public notification for new episode
-        const isRu = selectedAnimeForEpisodes.language === 'ru';
-        const titleMsg = isRu ? `${selectedAnimeForEpisodes.title}: ${epNumber}-серия` : `${selectedAnimeForEpisodes.title}: ${epNumber}-qism`;
-        const bodyMsg = isRu ? `Новая ${epNumber}-я серия ${selectedAnimeForEpisodes.title} добавлена на сайт!` : `${selectedAnimeForEpisodes.title} ning yangi ${epNumber}-qismi saytga qo'shildi!`;
+        try {
+          const isRu = selectedAnimeForEpisodes.language === 'ru';
+          const titleMsg = isRu ? `${selectedAnimeForEpisodes.title}: ${epNumber}-серия` : `${selectedAnimeForEpisodes.title}: ${epNumber}-qism`;
+          const bodyMsg = isRu ? `Новая ${epNumber}-я серия ${selectedAnimeForEpisodes.title} добавлена на сайт!` : `${selectedAnimeForEpisodes.title} ning yangi ${epNumber}-qismi saytga qo'shildi!`;
 
-        await addDoc(collection(db, 'public_notifications'), {
-          type: 'episode',
-          title: titleMsg,
-          message: bodyMsg,
-          posterUrl: selectedAnimeForEpisodes.posterUrl,
-          animeId: selectedAnimeForEpisodes.id,
-          createdAt: serverTimestamp()
-        });
-
-        // Send actual Push Notification
-        await sendPush(
-          titleMsg, 
-          bodyMsg,
-          selectedAnimeForEpisodes.posterUrl,
-          selectedAnimeForEpisodes.id
-        );
+          await addDoc(collection(db, 'public_notifications'), {
+            type: 'episode',
+            title: titleMsg,
+            message: bodyMsg,
+            posterUrl: selectedAnimeForEpisodes.posterUrl,
+            animeId: selectedAnimeForEpisodes.id,
+            createdAt: serverTimestamp()
+          });
+          await sendPush(titleMsg, bodyMsg, selectedAnimeForEpisodes.posterUrl, selectedAnimeForEpisodes.id);
+        } catch (notifErr: any) {
+          console.warn("[AdminPanel] Notification failed but episode was saved:", notifErr.message);
+        }
       }
       
       setEpNumber(prev => prev + 1);
