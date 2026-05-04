@@ -6,7 +6,7 @@ import { slugify } from '../lib/slugs';
 import { db, auth, loginWithGoogle } from '../firebase';
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { collection, query, orderBy, onSnapshot, doc, getDoc, setDoc, deleteDoc, writeBatch, serverTimestamp, where, increment, getDocs, addDoc, limit } from 'firebase/firestore';
-import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, Monitor, Settings, Star, Calendar, Clock, Search, Eye, X as CloseIcon, Loader2, Heart, Film, Sparkles, ChevronRight, Activity, TrendingUp, Check, ArrowLeft, MessageSquare, Send, User, Trash2, Filter, ChevronDown, RotateCcw, XCircle, Share2, Copy, Home, LayoutGrid, Bookmark, LogOut, Plus, Smile } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, Monitor, Settings, Star, Calendar, Clock, Search, Eye, X as CloseIcon, Loader2, Heart, Film, Sparkles, ChevronRight, Activity, TrendingUp, Check, ArrowLeft, MessageSquare, Send, User, Trash2, Filter, ChevronDown, RotateCcw, XCircle, Share2, Copy, Home, LayoutGrid, Bookmark, LogOut, Plus, Smile, SkipBack, SkipForward } from 'lucide-react';
 import { ShareModal } from './ShareModal';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
@@ -48,7 +48,7 @@ interface CommentDoc {
   createdAt: any;
 }
 
-const UniversalVideoPlayer = ({ src, videoRef, videoLoading, setVideoLoading, setCurrentTime }: any) => {
+const UniversalVideoPlayer = ({ src, videoRef, videoLoading, setVideoLoading, setCurrentTime, onNext, onPrev, hasNext, hasPrev }: any) => {
   const [loadError, setLoadError] = useState(false);
   const [resolvedSrc, setResolvedSrc] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -309,19 +309,49 @@ const UniversalVideoPlayer = ({ src, videoRef, videoLoading, setVideoLoading, se
         "absolute bottom-0 left-0 right-0 p-4 sm:p-6 bg-gradient-to-t from-black/90 to-transparent transition-opacity flex items-center justify-between z-[200] gap-4",
         showControls || !isPlaying ? "opacity-100" : "opacity-0 pointer-events-none"
       )}>
-        <button 
-          className="w-10 h-10 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded-full text-white transition-all active:scale-90" 
-          onClick={(e) => {
-            e.stopPropagation();
-            if (videoRef.current?.paused) { 
-              const p = videoRef.current?.play(); 
-              if (p !== undefined) p.catch(() => {});
-            }
-            else { videoRef.current?.pause(); }
-          }}
-        >
-          {isPlaying ? <Pause size={20} /> : <Play size={20} className="ml-0.5" />}
-        </button>
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          {onPrev && (
+            <button 
+              disabled={!hasPrev}
+              className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center bg-white/10 hover:bg-red-600 border border-white/10 rounded-full text-white transition-all active:scale-90 disabled:opacity-20 disabled:pointer-events-none group/prev" 
+              onClick={(e) => {
+                e.stopPropagation();
+                onPrev();
+              }}
+              title="Oldingi qism"
+            >
+              <SkipBack size={16} className="group-hover/prev:-translate-x-0.5 transition-transform" />
+            </button>
+          )}
+
+          <button 
+            className="w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center bg-red-600 hover:bg-red-500 rounded-full text-white transition-all active:scale-90 shadow-lg shadow-red-600/20" 
+            onClick={(e) => {
+              e.stopPropagation();
+              if (videoRef.current?.paused) { 
+                const p = videoRef.current?.play(); 
+                if (p !== undefined) p.catch(() => {});
+              }
+              else { videoRef.current?.pause(); }
+            }}
+          >
+            {isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} className="ml-1" fill="currentColor" />}
+          </button>
+
+          {onNext && (
+            <button 
+              disabled={!hasNext}
+              className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center bg-white/10 hover:bg-red-600 border border-white/10 rounded-full text-white transition-all active:scale-90 disabled:opacity-20 disabled:pointer-events-none group/next" 
+              onClick={(e) => {
+                e.stopPropagation();
+                onNext();
+              }}
+              title="Keyingi qism"
+            >
+              <SkipForward size={16} className="group-hover/next:translate-x-0.5 transition-transform" />
+            </button>
+          )}
+        </div>
         
         <div className="flex-1 flex items-center gap-2 sm:gap-4 text-white text-[10px] sm:text-xs font-bold">
            <span className="tabular-nums">{Math.floor(currentTime / 60)}:{Math.floor(currentTime % 60).toString().padStart(2, '0')}</span>
@@ -674,6 +704,22 @@ export default function AnimePortal({
         animeId: animeId,
         createdAt: serverTimestamp()
       });
+    }
+  };
+
+  const handleNextEpisode = () => {
+    if (!currentEpisode) return;
+    const currentIndex = episodes.findIndex(ep => ep.id === currentEpisode.id);
+    if (currentIndex < episodes.length - 1) {
+      handleEpisodeSelect(episodes[currentIndex + 1]);
+    }
+  };
+
+  const handlePrevEpisode = () => {
+    if (!currentEpisode) return;
+    const currentIndex = episodes.findIndex(ep => ep.id === currentEpisode.id);
+    if (currentIndex > 0) {
+      handleEpisodeSelect(episodes[currentIndex - 1]);
     }
   };
 
@@ -1140,7 +1186,7 @@ export default function AnimePortal({
             >
               <button 
                 onClick={() => setSelectedAnime(null)} 
-                className="absolute top-4 right-4 z-[210] p-2 bg-black/50 hover:bg-black/80 text-white rounded-full transition-colors border border-white/10"
+                className="absolute top-4 right-4 z-[400] p-2 bg-black/50 hover:bg-black/80 text-white rounded-full transition-colors border border-white/10"
               >
                 <XCircle size={24} />
               </button>
@@ -1187,13 +1233,6 @@ export default function AnimePortal({
                             )}
                         </div>
                         
-                        <button 
-                            onClick={() => setModalMode('player')}
-                            className="w-full py-4 bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-wider rounded-xl transition-colors"
-                        >
-                            {t('watch')}
-                        </button>
-                        
                         <div className="grid grid-cols-2 gap-3">
                             <button
                                 onClick={() => setShareModalOpen(true)}
@@ -1212,6 +1251,47 @@ export default function AnimePortal({
                                 <Heart size={18} className={cn(watchlist.has(selectedAnime.id) && "fill-current text-red-500")} />
                                 Saqlash
                             </button>
+                        </div>
+
+                        {/* Episodes selection in details view */}
+                        <div className="pt-8 border-t border-white/5">
+                            <h3 className="text-lg font-black uppercase tracking-tight mb-6 flex items-center justify-between">
+                               Qismlarni tanlang
+                               <span className="px-2 py-0.5 bg-white/5 rounded text-[10px] text-slate-500 font-bold">{episodes.length} TA QISM</span>
+                            </h3>
+                            <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2">
+                                {loadingEpisodes ? (
+                                    [1,2,3,4,5,6,7,8].map(i => <div key={i} className="aspect-square bg-white/5 animate-pulse rounded-lg" />)
+                                ) : episodes.length > 0 ? (
+                                    episodes.map((ep) => (
+                                        <button
+                                            key={ep.id}
+                                            onClick={() => {
+                                                handleEpisodeSelect(ep);
+                                                setModalMode('player');
+                                            }}
+                                            className={cn(
+                                                "aspect-square flex items-center justify-center bg-white/5 hover:bg-red-600 transition-all group rounded-lg border border-white/5 hover:border-red-500 hover:shadow-[0_0_15px_rgba(220,38,38,0.3)]",
+                                                currentEpisode?.id === ep.id && "bg-red-600 border-red-500 shadow-[0_0_15px_rgba(220,38,38,0.3)]"
+                                            )}
+                                        >
+                                            <span className={cn(
+                                                "text-xs font-black transition-colors",
+                                                currentEpisode?.id === ep.id ? "text-white" : "text-slate-400 group-hover:text-white"
+                                            )}>
+                                                {ep.episodeNumber}
+                                            </span>
+                                        </button>
+                                    ))
+                                ) : (
+                                    <div className="col-span-full py-12 text-center border-2 border-dashed border-white/5 rounded-2xl">
+                                        <div className="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-600">
+                                            <Film size={24} />
+                                        </div>
+                                        <h4 className="text-slate-500 font-black uppercase tracking-widest text-[10px]">Hozircha qismlar yuklanmagan</h4>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                       </div>
                     </div>
@@ -1361,21 +1441,43 @@ export default function AnimePortal({
                     className="flex-1 flex flex-col overflow-hidden relative bg-black min-h-0"
                   >
                     {/* Player UI Overlay */}
-                    <div className="absolute top-0 left-0 right-0 z-[110] p-6 sm:p-8 flex items-center justify-between bg-gradient-to-b from-black via-black/40 to-transparent pointer-events-none">
-                       <div className="flex items-center gap-4 sm:gap-6 pointer-events-auto">
-                          <button 
-                            onClick={() => setModalMode('details')}
-                            className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center hover:bg-white/20 transition-all active:scale-90"
-                          >
-                            <ArrowLeft size={18} className="sm:w-6 sm:h-6" />
-                          </button>
-                          <div className="space-y-1">
-                             <h3 className="text-white font-black text-lg sm:text-2xl tracking-tighter uppercase leading-none truncate max-w-[200px] sm:max-w-md">
-                               {selectedAnime.title}
-                             </h3>
-                             <p className="text-red-400 font-bold text-[10px] sm:text-xs uppercase tracking-widest">
-                                {t('episode')} {currentEpisode?.episodeNumber || 1} • {currentEpisode?.title || ''}
-                             </p>
+                    <div className="absolute top-0 left-0 right-0 z-[300] p-3 sm:p-8 flex flex-col items-start bg-gradient-to-b from-black via-black/80 to-transparent pointer-events-none">
+                       <div className="w-full flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-3 sm:gap-6 pointer-events-auto">
+                             <button 
+                               onClick={() => setModalMode('details')}
+                               className="w-9 h-9 sm:w-12 sm:h-12 rounded-full bg-black/40 backdrop-blur-md border border-white/20 flex items-center justify-center hover:bg-white/20 transition-all active:scale-90"
+                             >
+                               <ArrowLeft size={16} className="sm:w-6 sm:h-6" />
+                             </button>
+                             <div className="space-y-0.5 sm:space-y-1">
+                                <h3 className="text-white font-black text-sm sm:text-2xl tracking-tighter uppercase leading-none truncate max-w-[120px] sm:max-w-md">
+                                  {selectedAnime.title}
+                                </h3>
+                                <p className="text-red-400 font-bold text-[8px] sm:text-xs uppercase tracking-widest flex items-center gap-1.5">
+                                   <span className="w-1 h-1 bg-red-600 rounded-full animate-pulse" />
+                                   {t('episode')} {currentEpisode?.episodeNumber || 1}
+                                </p>
+                             </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 sm:gap-3 pointer-events-auto sm:mr-24">
+                             <button 
+                               disabled={episodes.findIndex(ep => ep.id === currentEpisode?.id) === 0}
+                               onClick={handlePrevEpisode}
+                               className="flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg bg-black/40 backdrop-blur-xl border border-white/10 hover:bg-red-600 transition-all active:scale-95 disabled:opacity-20 disabled:pointer-events-none group/nav shadow-2xl"
+                             >
+                               <SkipBack size={12} className="sm:w-3.5 sm:h-3.5 text-white transition-transform group-hover/nav:-translate-x-0.5" />
+                               <span className="hidden xs:inline text-[9px] sm:text-[10px] font-black uppercase tracking-widest">Oldingi</span>
+                             </button>
+                             <button 
+                               disabled={episodes.findIndex(ep => ep.id === currentEpisode?.id) === episodes.length - 1}
+                               onClick={handleNextEpisode}
+                               className="flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg bg-black/40 backdrop-blur-xl border border-white/10 hover:bg-red-600 transition-all active:scale-95 disabled:opacity-20 disabled:pointer-events-none group/nav shadow-2xl"
+                             >
+                               <span className="hidden xs:inline text-[9px] sm:text-[10px] font-black uppercase tracking-widest">Keyingi</span>
+                               <SkipForward size={12} className="sm:w-3.5 sm:h-3.5 text-white transition-transform group-hover/nav:translate-x-0.5" />
+                             </button>
                           </div>
                        </div>
                     </div>
@@ -1416,7 +1518,7 @@ export default function AnimePortal({
                                   'dai.ly': '/api/dailymotion/stream'
                                 };
 
-                                const proxyEntry = Object.entries(proxyMap).find(([key]) => url.includes(key));
+                                 const proxyEntry = Object.entries(proxyMap).find(([key]) => url.includes(key));
                                 if (proxyEntry) {
                                   const proxyUrl = `${proxyEntry[1]}?url=${encodeURIComponent(url)}`;
                                   return (
@@ -1426,6 +1528,10 @@ export default function AnimePortal({
                                       videoLoading={videoLoading}
                                       setVideoLoading={setVideoLoading}
                                       setCurrentTime={setCurrentTime}
+                                      onNext={handleNextEpisode}
+                                      onPrev={handlePrevEpisode}
+                                      hasNext={episodes.findIndex(ep => ep.id === currentEpisode?.id) < episodes.length - 1}
+                                      hasPrev={episodes.findIndex(ep => ep.id === currentEpisode?.id) > 0}
                                     />
                                   );
                                 }
@@ -1440,6 +1546,10 @@ export default function AnimePortal({
                                       videoLoading={videoLoading}
                                       setVideoLoading={setVideoLoading}
                                       setCurrentTime={setCurrentTime}
+                                      onNext={handleNextEpisode}
+                                      onPrev={handlePrevEpisode}
+                                      hasNext={episodes.findIndex(ep => ep.id === currentEpisode?.id) < episodes.length - 1}
+                                      hasPrev={episodes.findIndex(ep => ep.id === currentEpisode?.id) > 0}
                                     />
                                   );
                                 }
