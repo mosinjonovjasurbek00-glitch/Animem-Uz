@@ -1,5 +1,19 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, sendEmailVerification, signInWithCustomToken } from 'firebase/auth';
+import { 
+  getAuth, 
+  GoogleAuthProvider, 
+  signInWithPopup, 
+  signOut, 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword, 
+  updateProfile, 
+  sendEmailVerification, 
+  signInWithCustomToken,
+  setPersistence,
+  sendPasswordResetEmail,
+  browserLocalPersistence,
+  onAuthStateChanged
+} from 'firebase/auth';
 import { initializeFirestore, doc, setDoc, serverTimestamp, updateDoc, getDocFromServer } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getMessaging, onMessage } from 'firebase/messaging';
@@ -12,6 +26,11 @@ export const db = initializeFirestore(app, {
 }, firebaseConfig.firestoreDatabaseId || "(default)");
 
 export const auth = getAuth(app);
+
+// Enforce local persistence which is more reliable in WebViews/APKs
+setPersistence(auth, browserLocalPersistence).catch(err => {
+    console.error("[Firebase] Persistence error:", err);
+});
 export const storage = getStorage(app);
 export const messaging = getMessaging(app);
 export const googleProvider = new GoogleAuthProvider();
@@ -88,7 +107,7 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 export const logout = () => signOut(auth);
 
-export { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, sendEmailVerification, signInWithCustomToken };
+export { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, sendEmailVerification, signInWithCustomToken, sendPasswordResetEmail };
 
 export const syncUserToFirestore = async (user: any) => {
   if (!user) return;

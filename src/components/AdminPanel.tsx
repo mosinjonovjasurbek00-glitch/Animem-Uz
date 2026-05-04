@@ -344,9 +344,12 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
             message: msg,
             posterUrl: finalPosterUrl,
             animeId: newAnimeDoc.id,
-            createdAt: serverTimestamp()
+            createdAt: serverTimestamp(),
+            sentToTelegram: false
           });
           await sendPush(title, msg, finalPosterUrl, newAnimeDoc.id);
+          // Trigger telegram bot
+          try { fetch('/api/admin/trigger-telegram', { method: 'POST' }).catch(() => {}); } catch(e) {}
         } catch (notifErr: any) {
           console.warn("[AdminPanel] Notification failed but anime was saved:", notifErr.message);
         }
@@ -437,9 +440,12 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
             message: bodyMsg,
             posterUrl: selectedAnimeForEpisodes.posterUrl,
             animeId: selectedAnimeForEpisodes.id,
-            createdAt: serverTimestamp()
+            createdAt: serverTimestamp(),
+            sentToTelegram: false
           });
           await sendPush(titleMsg, bodyMsg, selectedAnimeForEpisodes.posterUrl, selectedAnimeForEpisodes.id);
+          // Trigger telegram bot
+          try { fetch('/api/admin/trigger-telegram', { method: 'POST' }).catch(() => {}); } catch(e) {}
         } catch (notifErr: any) {
           console.warn("[AdminPanel] Notification failed but episode was saved:", notifErr.message);
         }

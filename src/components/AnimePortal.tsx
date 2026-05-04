@@ -788,7 +788,7 @@ export default function AnimePortal({
   };
 
   const getCanonical = () => {
-    const baseUrl = 'https://www.animem.uz';
+    const baseUrl = 'https://animem.uz';
     if (selectedAnime) return `${baseUrl}/anime/${selectedAnime.slug || selectedAnime.id}`;
     if (activeTab === 'news') return `${baseUrl}/news`;
     if (activeTab === 'watchlist') return `${baseUrl}/watchlist`;
@@ -1186,9 +1186,9 @@ export default function AnimePortal({
             >
               <button 
                 onClick={() => setSelectedAnime(null)} 
-                className="absolute top-4 right-4 z-[400] p-2 bg-black/50 hover:bg-black/80 text-white rounded-full transition-colors border border-white/10"
+                className="absolute top-4 right-4 z-[999] p-2 bg-black/60 hover:bg-black/90 text-white rounded-full transition-all border border-white/20 active:scale-90"
               >
-                <XCircle size={24} />
+                <XCircle size={24} className="sm:w-7 sm:h-7" />
               </button>
 
               <AnimatePresence mode="wait">
@@ -1441,42 +1441,42 @@ export default function AnimePortal({
                     className="flex-1 flex flex-col overflow-hidden relative bg-black min-h-0"
                   >
                     {/* Player UI Overlay */}
-                    <div className="absolute top-0 left-0 right-0 z-[300] p-3 sm:p-8 flex flex-col items-start bg-gradient-to-b from-black via-black/80 to-transparent pointer-events-none">
+                    <div className="absolute top-0 left-0 right-0 z-[300] p-3 sm:p-8 flex flex-col items-start bg-gradient-to-b from-black/95 via-black/80 to-transparent pointer-events-none">
                        <div className="w-full flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-3 sm:gap-6 pointer-events-auto">
+                          <div className="flex items-center gap-2 sm:gap-6 pointer-events-auto">
                              <button 
                                onClick={() => setModalMode('details')}
-                               className="w-9 h-9 sm:w-12 sm:h-12 rounded-full bg-black/40 backdrop-blur-md border border-white/20 flex items-center justify-center hover:bg-white/20 transition-all active:scale-90"
+                               className="w-8 h-8 sm:w-12 sm:h-12 rounded-full bg-black/40 backdrop-blur-md border border-white/20 flex items-center justify-center hover:bg-white/20 transition-all active:scale-90"
                              >
-                               <ArrowLeft size={16} className="sm:w-6 sm:h-6" />
+                               <ArrowLeft size={14} className="sm:w-6 sm:h-6" />
                              </button>
                              <div className="space-y-0.5 sm:space-y-1">
-                                <h3 className="text-white font-black text-sm sm:text-2xl tracking-tighter uppercase leading-none truncate max-w-[120px] sm:max-w-md">
+                                <h3 className="text-white font-black text-xs sm:text-2xl tracking-tighter uppercase leading-none truncate max-w-[100px] sm:max-w-md">
                                   {selectedAnime.title}
                                 </h3>
-                                <p className="text-red-400 font-bold text-[8px] sm:text-xs uppercase tracking-widest flex items-center gap-1.5">
-                                   <span className="w-1 h-1 bg-red-600 rounded-full animate-pulse" />
+                                <p className="text-red-400 font-bold text-[7px] sm:text-xs uppercase tracking-widest flex items-center gap-1">
+                                   <span className="w-0.5 h-0.5 bg-red-600 rounded-full animate-pulse" />
                                    {t('episode')} {currentEpisode?.episodeNumber || 1}
                                 </p>
                              </div>
                           </div>
-
-                          <div className="flex items-center gap-1.5 sm:gap-3 pointer-events-auto sm:mr-24">
+ 
+                          <div className="flex items-center gap-1 sm:gap-3 pointer-events-auto mr-12 sm:mr-24">
                              <button 
                                disabled={episodes.findIndex(ep => ep.id === currentEpisode?.id) === 0}
                                onClick={handlePrevEpisode}
-                               className="flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg bg-black/40 backdrop-blur-xl border border-white/10 hover:bg-red-600 transition-all active:scale-95 disabled:opacity-20 disabled:pointer-events-none group/nav shadow-2xl"
+                               className="flex items-center gap-1 sm:gap-1.5 px-2 py-1 sm:px-3 sm:py-2 rounded-lg bg-black/40 backdrop-blur-xl border border-white/10 hover:bg-red-600 transition-all active:scale-95 disabled:opacity-20 disabled:pointer-events-none group/nav shadow-2xl"
                              >
-                               <SkipBack size={12} className="sm:w-3.5 sm:h-3.5 text-white transition-transform group-hover/nav:-translate-x-0.5" />
-                               <span className="hidden xs:inline text-[9px] sm:text-[10px] font-black uppercase tracking-widest">Oldingi</span>
+                               <SkipBack size={10} className="sm:w-3.5 sm:h-3.5 text-white transition-transform group-hover/nav:-translate-x-0.5" />
+                               <span className="hidden xs:inline text-[8px] sm:text-[10px] font-black uppercase tracking-widest">Prev</span>
                              </button>
                              <button 
                                disabled={episodes.findIndex(ep => ep.id === currentEpisode?.id) === episodes.length - 1}
                                onClick={handleNextEpisode}
-                               className="flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg bg-black/40 backdrop-blur-xl border border-white/10 hover:bg-red-600 transition-all active:scale-95 disabled:opacity-20 disabled:pointer-events-none group/nav shadow-2xl"
+                               className="flex items-center gap-1 sm:gap-1.5 px-2 py-1 sm:px-3 sm:py-2 rounded-lg bg-black/40 backdrop-blur-xl border border-white/10 hover:bg-red-600 transition-all active:scale-95 disabled:opacity-20 disabled:pointer-events-none group/nav shadow-2xl"
                              >
-                               <span className="hidden xs:inline text-[9px] sm:text-[10px] font-black uppercase tracking-widest">Keyingi</span>
-                               <SkipForward size={12} className="sm:w-3.5 sm:h-3.5 text-white transition-transform group-hover/nav:translate-x-0.5" />
+                               <span className="hidden xs:inline text-[8px] sm:text-[10px] font-black uppercase tracking-widest">Next</span>
+                               <SkipForward size={10} className="sm:w-3.5 sm:h-3.5 text-white transition-transform group-hover/nav:translate-x-0.5" />
                              </button>
                           </div>
                        </div>

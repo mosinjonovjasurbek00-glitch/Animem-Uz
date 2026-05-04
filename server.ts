@@ -1,3 +1,6 @@
+import dotenv from "dotenv";
+dotenv.config();
+
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
@@ -5,35 +8,41 @@ import { fileURLToPath } from "url";
 import fs from "fs";
 import crypto from "crypto";
 import axios from "axios";
-import dotenv from "dotenv";
-import admin from "firebase-admin";
 import { Resend } from "resend";
+import admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
 import firebaseConfig from "./firebase-applet-config.json" with { type: "json" };
 import { slugify } from "./src/lib/slugs.js";
 
-dotenv.config();
+// CRITICAL: Force the project ID into the environment to prevent the SDK 
+// from defaulting to the internal AI Studio project.
+// This must be set before any firebase-admin modules are imported.
+process.env.GOOGLE_CLOUD_PROJECT = firebaseConfig.projectId;
+process.env.GCLOUD_PROJECT = firebaseConfig.projectId;
 
 const resend = new Resend(process.env.RESEND_API_KEY || "re_12JeyV4W_86o1wrUPcGEYbuP8eVU7imvt");
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// CRITICAL: Force the project ID into the environment to prevent the SDK 
-// from defaulting to the internal AI Studio project.
-process.env.GOOGLE_CLOUD_PROJECT = firebaseConfig.projectId;
-process.env.GCLOUD_PROJECT = firebaseConfig.projectId;
-
 console.log(`DEBUG: Project ID from config: ${firebaseConfig.projectId}`);
 
 // Initialize Firebase Admin with explicit configuration
 if (admin.apps.length === 0) {
   try {
-    const projectId = firebaseConfig.projectId;
+    const envFirebaseConfig = process.env.FIREBASE_CONFIG ? JSON.parse(process.env.FIREBASE_CONFIG) : {};
+    const projectId = envFirebaseConfig.projectId || firebaseConfig.projectId;
+    
     console.log(`[Firebase] Initializing Admin for project: ${projectId}`);
-    console.log(`[Firebase] Environment - GOOGLE_CLOUD_PROJECT: ${process.env.GOOGLE_CLOUD_PROJECT}`);
-    console.log(`[Firebase] Environment - GCLOUD_PROJECT: ${process.env.GCLOUD_PROJECT}`);
+    
+    if (envFirebaseConfig.projectId && envFirebaseConfig.projectId !== firebaseConfig.projectId) {
+      console.warn(`[Firebase] Project ID mismatch detected! Using environment's ${envFirebaseConfig.projectId} instead of config's ${firebaseConfig.projectId}`);
+    }
+
+    process.env.GOOGLE_CLOUD_PROJECT = projectId;
+    process.env.GCLOUD_PROJECT = projectId;
+
     admin.initializeApp({
       projectId: projectId
     });
@@ -48,18 +57,20 @@ const getDbAdmin = () => {
   if (_db) return _db;
 
   const configDbId = firebaseConfig.firestoreDatabaseId;
+  const envFirebaseConfig = process.env.FIREBASE_CONFIG ? JSON.parse(process.env.FIREBASE_CONFIG) : {};
+  const envDbId = envFirebaseConfig.firestoreDatabaseId;
+
+  // Prefer environment database ID if available
+  const effectiveDbId = envDbId || configDbId;
 
   try {
-    if (configDbId && configDbId !== "(default)" && configDbId.trim() !== "") {
-      console.log(`[Firebase] Attempting to use named database: "${configDbId}"`);
-      // Use getFirestore(databaseId) for named database
-      // Try to verify access by trying a tiny call
-      const db = getFirestore(configDbId);
-      _db = db;
+    if (effectiveDbId && effectiveDbId !== "(default)" && effectiveDbId.trim() !== "") {
+      console.log(`[Firebase] Attempting to use database: "${effectiveDbId}"`);
+      _db = getFirestore(effectiveDbId);
       return _db;
     }
   } catch (e: any) {
-    console.warn(`[Firebase] Failed to initialize named database "${configDbId}", falling back to default:`, e.message);
+    console.warn(`[Firebase] Failed to initialize database "${effectiveDbId}", falling back to default:`, e.message);
   }
   
   console.log(`[Firebase] Using default database`);
@@ -80,8 +91,98 @@ import { dtubeStreamer } from "./src/services/DTubeStreamer";
 export const app = express();
 const PORT = 3000;
 
+import { telegramNotificationService } from "./src/services/TelegramNotificationService.js";
+
+// Global helper for Telegram notifications
+// @ts-ignore
+global.triggerTelegramCheck = async () => {
+  try {
+    console.log("[TelegramBridge] Starting check...");
+    let db = getDbAdmin();
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    
+    let notificationsSnap;
+    try {
+      notificationsSnap = await db.collection('public_notifications')
+        .where('createdAt', '>=', sevenDaysAgo)
+        .where('sentToTelegram', '==', false)
+        .get();
+    } catch (e: any) {
+      const errorMsg = e.message || '';
+      console.warn(`[TelegramBridge] Primary attempt failed: ${errorMsg}`);
+      
+      // If it failed with NOT_FOUND or PERMISSION_DENIED, try the fallback
+      if (errorMsg.includes('PERMISSION_DENIED') || errorMsg.includes('NOT_FOUND') || e.code === 7 || e.code === 5) {
+        console.warn(`[TelegramBridge] Attempting default DB fallback...`);
+        // We force standard getFirestore() which usually hits (default)
+        const defaultDb = getFirestore();
+        notificationsSnap = await defaultDb.collection('public_notifications')
+          .where('createdAt', '>=', sevenDaysAgo)
+          .where('sentToTelegram', '==', false)
+          .get();
+        // If this succeeds, update the cached _db for future calls
+        _db = defaultDb;
+      } else {
+        throw e;
+      }
+    }
+
+    console.log(`[TelegramBridge] Found ${notificationsSnap.size} pending notifications to send to Telegram`);
+
+    if (notificationsSnap.empty) return;
+
+    for (const docSnap of notificationsSnap.docs) {
+      const data = docSnap.data();
+      console.log(`[TelegramBridge] Sending Telegram message for: ${data.title}`);
+      await telegramNotificationService.sendNotification({
+        title: data.title,
+        message: data.message,
+        posterUrl: data.posterUrl,
+        animeId: data.animeId,
+        type: data.type || 'anime'
+      });
+
+      // Mark as sent
+      await docSnap.ref.update({ sentToTelegram: true });
+      console.log(`[TelegramBridge] Successfully marked notification ${docSnap.id} as sent`);
+    }
+  } catch (error) {
+    console.error("[TelegramBridge] CRITICAL error during check:", error);
+  }
+};
+
 async function setupServer() {
   app.use(express.json());
+
+  // Cloudflare Turnstile verification
+  app.post("/api/verify-turnstile", async (req, res) => {
+    const { token } = req.body;
+    const secretKey = process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY;
+
+    if (!token) {
+      return res.status(400).json({ success: false, message: "Captcha tokeni talab qilinadi" });
+    }
+
+    try {
+      const formData = new URLSearchParams();
+      formData.append('secret', secretKey || '0x4AAAAAAC_bMjdxOF0heoEKSApYVqf_fu4');
+      formData.append('response', token);
+
+      const result = await axios.post(
+        'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+        formData.toString()
+      );
+
+      if (result.data.success) {
+        res.json({ success: true });
+      } else {
+        res.status(403).json({ success: false, message: "Captcha tekshiruvi muvaffaqiyatsiz bo'ldi", errors: result.data['error-codes'] });
+      }
+    } catch (error) {
+      console.error("[Captcha] Verify error:", error);
+      res.status(500).json({ success: false, message: "Ichki server xatosi" });
+    }
+  });
   
   // Katta videolarni serverdan parchalab uzatish yo'li
   app.get("/api/telegram/stream", async (req, res) => {
@@ -286,16 +387,30 @@ async function setupServer() {
 
   // Robots.txt
   app.get("/robots.txt", (req, res) => {
+    const host = req.get('host') || "animem.uz";
+    const protocol = req.protocol === 'http' && host.includes('localhost') ? 'http' : 'https';
+    const baseUrl = `${protocol}://${host}`;
+    
     res.type("text/plain");
-    res.send(`User-agent: *\nAllow: /\nDisallow: /admin\n\nSitemap: https://animem.uz/sitemap.xml`);
+    res.send(`User-agent: *\nAllow: /\nDisallow: /admin\n\nSitemap: ${baseUrl}/sitemap.xml`);
   });
 
   // Dynamic Sitemap Generation
   app.get("/sitemap.xml", async (req, res) => {
     try {
       const db = getDbAdmin();
-      // Only fetch basic anime data to keep it fast
-      const animeSnapshot = await db.collection('anime').orderBy('updatedAt', 'desc').get();
+      const host = req.get('host') || "animem.uz";
+      const protocol = req.protocol === 'http' && host.includes('localhost') ? 'http' : 'https';
+      const baseUrl = `${protocol}://${host}`;
+      
+      console.log(`[Sitemap] Generating for ${baseUrl}...`);
+
+      // Only fetch basic anime data, limit to 2000 to prevent timeouts
+      const animeSnapshot = await db.collection('anime')
+        .orderBy('updatedAt', 'desc')
+        .limit(2000)
+        .get();
+      
       const animeDocs = animeSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
 
       const categories = [
@@ -305,11 +420,10 @@ async function setupServer() {
         'Isekai', 'Shounen', 'Seinen', 'Shoujo', 'Music'
       ];
 
-      const baseUrl = "https://animem.uz";
       const now = new Date().toISOString().split('T')[0];
 
       let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
-      xml += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n`;
+      xml += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
 
       // 1. Home
       xml += `  <url>\n    <loc>${baseUrl}/</loc>\n    <lastmod>${now}</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>1.0</priority>\n  </url>\n`;
@@ -323,11 +437,22 @@ async function setupServer() {
         xml += `  <url>\n    <loc>${baseUrl}/category/${encodeURIComponent(cat.toLowerCase())}</loc>\n    <lastmod>${now}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.7</priority>\n  </url>\n`;
       });
 
-      // 4. Individual Anime (Only main pages to avoid timeouts)
+      // 4. Individual Anime
       for (const anime of animeDocs) {
-        const lastMod = anime.updatedAt ? 
-          (typeof anime.updatedAt.toMillis === 'function' ? new Date(anime.updatedAt.toMillis()).toISOString().split('T')[0] : 
-           (anime.updatedAt instanceof Date ? anime.updatedAt.toISOString().split('T')[0] : now)) : now;
+        let lastMod = now;
+        try {
+          if (anime.updatedAt) {
+            if (typeof anime.updatedAt.toMillis === 'function') {
+              lastMod = new Date(anime.updatedAt.toMillis()).toISOString().split('T')[0];
+            } else if (anime.updatedAt instanceof Date) {
+              lastMod = anime.updatedAt.toISOString().split('T')[0];
+            } else if (typeof anime.updatedAt === 'number') {
+              lastMod = new Date(anime.updatedAt).toISOString().split('T')[0];
+            }
+          }
+        } catch (e) {
+          lastMod = now;
+        }
         
         xml += `  <url>\n    <loc>${baseUrl}/anime/${anime.id}</loc>\n    <lastmod>${lastMod}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.8</priority>\n  </url>\n`;
       }
@@ -335,11 +460,13 @@ async function setupServer() {
       xml += `</urlset>`;
 
       res.header('Content-Type', 'application/xml');
+      res.header('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
       res.status(200).send(xml);
     } catch (error) {
       console.error("Sitemap error:", error);
-      // Fallback minimal sitemap if Firestore Admin fails
-      const minimalXml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n<url><loc>https://animem.uz/</loc><priority>1.0</priority></url>\n</urlset>`;
+      const host = req.get('host') || "animem.uz";
+      const baseUrl = `https://${host}`;
+      const minimalXml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n<url><loc>${baseUrl}/</loc><priority>1.0</priority></url>\n</urlset>`;
       res.header('Content-Type', 'application/xml');
       res.status(200).send(minimalXml);
     }
@@ -417,6 +544,7 @@ async function setupServer() {
       // Small delay to ensure Firestore has indexed the new document
       setTimeout(async () => {
         if (typeof global.triggerTelegramCheck === 'function') {
+          // @ts-ignore
           await global.triggerTelegramCheck();
         }
       }, 2000);
@@ -427,13 +555,25 @@ async function setupServer() {
     }
   });
 
+  // Debug test for Telegram
+  app.get("/api/admin/test-telegram", async (req, res) => {
+    try {
+      await telegramNotificationService.sendNotification({
+        title: "TEST NOTIFICATION",
+        message: "Bu robotning ishlashini tekshirish uchun test xabari.",
+        animeId: "test",
+        type: 'anime'
+      });
+      res.json({ success: true, message: "Test xabari Telegramga yuborildi (loglarni tekshiring)" });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // Broadcast notification endpoint
   app.post("/api/admin/broadcast-notification", async (req, res) => {
     const { title, body, imageUrl, animeId } = req.body;
     
-    // Basic auth check would be good here, but for now we follow the app's pattern
-    // In production, we'd check req.headers.authorization via firebase-admin verifyIdToken
-
     try {
       const db = getDbAdmin();
       const tokensSnap = await db.collection('fcm_tokens').get();
@@ -443,27 +583,14 @@ async function setupServer() {
         return res.json({ success: true, message: "No tokens found" });
       }
 
-      console.log(`Sending push notification to ${tokens.length} devices: ${title}`);
-
       const message = {
-        notification: {
-          title,
-          body,
-          image: imageUrl
-        },
-        data: {
-          animeId: animeId || '',
-          click_action: 'FLUTTER_NOTIFICATION_CLICK' // For consistency, though we are web
-        },
+        notification: { title, body, image: imageUrl },
+        data: { animeId: animeId || '' },
         tokens: tokens
       };
 
-      // sendEachForMulticast is the modern way in v11+
       try {
         const response = await admin.messaging().sendEachForMulticast(message);
-        console.log(`Push success: ${response.successCount}, failures: ${response.failureCount}`);
-        
-        // Cleanup invalid tokens
         if (response.failureCount > 0) {
           const batch = db.batch();
           response.responses.forEach((resp, idx) => {
@@ -478,14 +605,28 @@ async function setupServer() {
         }
         res.json({ success: true, count: response.successCount });
       } catch (fcmErr: any) {
-        console.error("FCM broadcast error:", fcmErr);
         res.json({ success: true, message: "Process continued with FCM error", error: fcmErr.message });
       }
     } catch (error: any) {
-      console.error("Route error:", error);
       res.status(500).json({ error: error.message });
     }
   });
+
+  // Start periodic check
+  setInterval(() => {
+    if (typeof global.triggerTelegramCheck === 'function') {
+      // @ts-ignore
+      global.triggerTelegramCheck().catch(console.error);
+    }
+  }, 60000); // Every 1 minute
+
+  // Initial check
+  setTimeout(() => {
+    if (typeof global.triggerTelegramCheck === 'function') {
+      // @ts-ignore
+      global.triggerTelegramCheck().catch(console.error);
+    }
+  }, 5000);
 
   // SEO Injection Helper
   const injectMetaTags = async (req: express.Request, html: string) => {
