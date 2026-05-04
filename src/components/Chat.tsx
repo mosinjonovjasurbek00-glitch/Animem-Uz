@@ -52,7 +52,11 @@ const STICKERS = [
   "https://media0.giphy.com/media/1K8NlomCFNuKcGlHxT/200w_d.gif",
   "https://media0.giphy.com/media/1YI48cB3IHJJu/200w_d.gif",
   "https://media3.giphy.com/media/YO7P8VC7nlQlO/200w_d.gif",
-  "https://media3.giphy.com/media/i1ZoaTn24AYgg/200w_d.gif"
+  "https://media3.giphy.com/media/i1ZoaTn24AYgg/200w_d.gif",
+  "https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExN202bHVlNGVyZnBxY3FxZWVtaXN5bDM4NzZvcnJzMXJhZWcydXU0dSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/OGXilB8foNFIs/giphy.gif",
+  "https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExZHhxcGp5aG15a2VlN3VoY2hnNXRzcmYyMXUwMjI4b3VzcDk5Y2hwbCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/IKFVtPf8jP6KJH16dB/giphy.gif",
+  "https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExaHJqbW53NzVlbDYxNG85d3ZvZDgwMDU1cnU4c2lyczN4ODFpNThxbiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/IsIyvk7zftw4H2C1Kz/giphy.gif",
+  "https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExcjBqYmZ1MHZ6MmVkazhhb2V6enpvaHB1cjB0ejUzem40YmUydGNzMyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/l9WKLzY8st96g/giphy.gif"
 ];
 
 const OLD_STICKERS_DUPE = [
