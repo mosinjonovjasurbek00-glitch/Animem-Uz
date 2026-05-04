@@ -1,3 +1,6 @@
+import dotenv from "dotenv";
+dotenv.config();
+
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
@@ -9,9 +12,6 @@ import { Resend } from "resend";
 import admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
-import dotenv from "dotenv";
-
-dotenv.config();
 
 // Load firebase config safely
 const firebaseConfig = JSON.parse(fs.readFileSync("./firebase-applet-config.json", "utf-8"));
@@ -38,13 +38,7 @@ if (admin.apps.length === 0) {
     
     console.log(`[Firebase] Initializing Admin for project: ${projectId}`);
     
-    if (envFirebaseConfig.projectId && envFirebaseConfig.projectId !== firebaseConfig.projectId) {
-      console.warn(`[Firebase] Project ID mismatch detected! Using environment's ${envFirebaseConfig.projectId} instead of config's ${firebaseConfig.projectId}`);
-    }
-
-    process.env.GOOGLE_CLOUD_PROJECT = projectId;
-    process.env.GCLOUD_PROJECT = projectId;
-
+    // Always use the project ID from the config or environment to be safe
     admin.initializeApp({
       projectId: projectId
     });
@@ -65,14 +59,14 @@ const getDbAdmin = () => {
   // Prefer environment database ID if available
   const effectiveDbId = envDbId || configDbId;
 
-  try {
-    if (effectiveDbId && effectiveDbId !== "(default)" && effectiveDbId.trim() !== "") {
-      console.log(`[Firebase] Attempting to use database: "${effectiveDbId}"`);
+  if (effectiveDbId && effectiveDbId !== "(default)" && effectiveDbId.trim() !== "") {
+    try {
+      console.log(`[Firebase] Attempting to use named database: "${effectiveDbId}"`);
       _db = getFirestore(effectiveDbId);
       return _db;
+    } catch (e: any) {
+      console.warn(`[Firebase] Initial attachment to named database "${effectiveDbId}" failed:`, e.message);
     }
-  } catch (e: any) {
-    console.warn(`[Firebase] Failed to initialize database "${effectiveDbId}", falling back to default:`, e.message);
   }
   
   console.log(`[Firebase] Using default database`);
@@ -99,9 +93,9 @@ import { telegramNotificationService } from "./src/services/TelegramNotification
 // @ts-ignore
 global.triggerTelegramCheck = async () => {
   try {
-    console.log("[TelegramBridge] Starting check...");
+    // console.log("[TelegramBridge] Starting check..."); // Silent start to reduce log noise
     let db = getDbAdmin();
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const sevenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000); // Check 14 days back
     
     let notificationsSnap;
     try {
@@ -111,78 +105,107 @@ global.triggerTelegramCheck = async () => {
         .get();
     } catch (e: any) {
       const errorMsg = e.message || '';
-      console.warn(`[TelegramBridge] Primary attempt failed: ${errorMsg}`);
+      const errorCode = e.code;
       
       // If it failed with NOT_FOUND or PERMISSION_DENIED, try the fallback
-      if (errorMsg.includes('PERMISSION_DENIED') || errorMsg.includes('NOT_FOUND') || e.code === 7 || e.code === 5) {
-        console.warn(`[TelegramBridge] Attempting default DB fallback...`);
-        // We force standard getFirestore() which usually hits (default)
-        const defaultDb = getFirestore();
-        notificationsSnap = await defaultDb.collection('public_notifications')
-          .where('createdAt', '>=', sevenDaysAgo)
-          .where('sentToTelegram', '==', false)
-          .get();
-        // If this succeeds, update the cached _db for future calls
-        _db = defaultDb;
+      if (errorMsg.includes('PERMISSION_DENIED') || errorMsg.includes('NOT_FOUND') || errorCode === 7 || errorCode === 5) {
+        console.warn(`[TelegramBridge] Primary database access failed (${errorCode}). Trying default DB fallback...`);
+        try {
+          const defaultDb = getFirestore();
+          notificationsSnap = await defaultDb.collection('public_notifications')
+            .where('createdAt', '>=', sevenDaysAgo)
+            .where('sentToTelegram', '==', false)
+            .get();
+          // If this succeeds, update the cached _db for future calls
+          _db = defaultDb;
+        } catch (fallbackError: any) {
+          console.warn(`[TelegramBridge] Fallback database access also failed: ${fallbackError.message}`);
+          return; // Silently exit if both fail
+        }
       } else {
-        throw e;
+        console.error(`[TelegramBridge] Unexpected Firestore error: ${errorMsg}`);
+        return;
       }
     }
 
-    console.log(`[TelegramBridge] Found ${notificationsSnap.size} pending notifications to send to Telegram`);
+    if (!notificationsSnap || notificationsSnap.empty) return;
 
-    if (notificationsSnap.empty) return;
+    console.log(`[TelegramBridge] Found ${notificationsSnap.size} pending notifications to send to Telegram`);
 
     for (const docSnap of notificationsSnap.docs) {
       const data = docSnap.data();
-      console.log(`[TelegramBridge] Sending Telegram message for: ${data.title}`);
-      await telegramNotificationService.sendNotification({
-        title: data.title,
-        message: data.message,
-        posterUrl: data.posterUrl,
-        animeId: data.animeId,
-        type: data.type || 'anime'
-      });
+      try {
+        console.log(`[TelegramBridge] Sending Telegram message for: ${data.title}`);
+        await telegramNotificationService.sendNotification({
+          title: data.title,
+          message: data.message,
+          posterUrl: data.posterUrl,
+          animeId: data.animeId,
+          type: data.type || 'anime'
+        });
 
-      // Mark as sent
-      await docSnap.ref.update({ sentToTelegram: true });
-      console.log(`[TelegramBridge] Successfully marked notification ${docSnap.id} as sent`);
+        // Mark as sent
+        await docSnap.ref.update({ sentToTelegram: true });
+        console.log(`[TelegramBridge] Successfully marked notification ${docSnap.id} as sent`);
+      } catch (docError: any) {
+        console.error(`[TelegramBridge] Error processing notification ${docSnap.id}:`, docError.message);
+      }
     }
-  } catch (error) {
-    console.error("[TelegramBridge] CRITICAL error during check:", error);
+  } catch (error: any) {
+    // Only log critical errors that aren't missing permissions or missing DB
+    const msg = error.message || '';
+    if (!msg.includes('PERMISSION_DENIED') && !msg.includes('NOT_FOUND')) {
+      console.error("[TelegramBridge] CRITICAL error during check:", error);
+    }
   }
 };
 
 async function setupServer() {
   app.use(express.json());
 
+  // Health check
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", timestamp: new Date().toISOString() });
+  });
+
   // Cloudflare Turnstile verification
   app.post("/api/verify-turnstile", async (req, res) => {
-    const { token } = req.body;
-    const secretKey = process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY;
-
-    if (!token) {
-      return res.status(400).json({ success: false, message: "Captcha tokeni talab qilinadi" });
-    }
-
+    console.log("[Captcha] Verification request received");
     try {
-      const formData = new URLSearchParams();
-      formData.append('secret', secretKey || '0x4AAAAAAC_bMjdxOF0heoEKSApYVqf_fu4');
-      formData.append('response', token);
+      const { token } = req.body || {};
+      const secretKey = process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY || '0x4AAAAAAC_bMjdxOF0heoEKSApYVqf_fu4';
 
-      const result = await axios.post(
-        'https://challenges.cloudflare.com/turnstile/v0/siteverify',
-        formData.toString()
-      );
+      if (!token) {
+        console.warn("[Captcha] Missing token in request");
+        return res.status(400).json({ success: false, message: "Captcha tokeni talab qilinadi" });
+      }
 
-      if (result.data.success) {
+      console.log("[Captcha] Verifying with Cloudflare...");
+      const verifyRes = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `secret=${encodeURIComponent(secretKey)}&response=${encodeURIComponent(token)}`,
+      });
+
+      const verifyData = await verifyRes.json() as any;
+      console.log("[Captcha] Cloudflare response data:", verifyData);
+
+      if (verifyData.success) {
+        console.log("[Captcha] Verification SUCCESS");
         res.json({ success: true });
       } else {
-        res.status(403).json({ success: false, message: "Captcha tekshiruvi muvaffaqiyatsiz bo'ldi", errors: result.data['error-codes'] });
+        console.warn("[Captcha] Verification FAILED:", verifyData['error-codes']);
+        res.status(403).json({ 
+          success: false, 
+          message: "Captcha tekshiruvi muvaffaqiyatsiz bo'ldi", 
+          errors: verifyData['error-codes'] 
+        });
       }
-    } catch (error) {
-      console.error("[Captcha] Verify error:", error);
-      res.status(500).json({ success: false, message: "Ichki server xatosi" });
+    } catch (error: any) {
+      console.error("[Captcha] CRITICAL ERROR:", error);
+      res.status(500).json({ success: false, message: "Ichki server xatosi: " + error.message });
     }
   });
   
