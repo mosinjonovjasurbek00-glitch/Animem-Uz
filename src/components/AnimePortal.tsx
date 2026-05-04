@@ -987,8 +987,15 @@ export default function AnimePortal({
                         onClick={() => handleOpenAnime(anime)}
                         className="group flex flex-col cursor-pointer"
                       >
-                          <div className="relative aspect-[2/3] rounded-3xl overflow-hidden border border-white/5 group-hover:border-red-500/50 transition-all shadow-2xl bg-[#080808]">
-                            <img src={anime.posterUrl} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" referrerPolicy="no-referrer" />
+                          <div className="relative aspect-[2/3] rounded-3xl overflow-hidden border border-white/5 group-hover:border-red-500/50 transition-all shadow-2xl bg-[#080808] will-change-transform">
+                            <img 
+                              src={anime.posterUrl} 
+                              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" 
+                              referrerPolicy="no-referrer" 
+                              loading="lazy"
+                              decoding="async"
+                              alt={anime.title}
+                            />
                             
                             {/* Rating Overlay */}
                             <div className="absolute top-4 right-4 z-10 flex items-center gap-1.5 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10">
@@ -1066,8 +1073,15 @@ export default function AnimePortal({
                   onClick={() => handleOpenAnime(anime)}
                   className="flex-shrink-0 w-44 sm:w-52 group cursor-pointer"
                 >
-                  <div className="aspect-[2/3] rounded-3xl overflow-hidden border border-white/5 group-hover:border-red-500/50 transition-all relative shadow-xl bg-slate-900">
-                    <img src={anime.posterUrl} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" referrerPolicy="no-referrer" />
+                  <div className="aspect-[2/3] rounded-3xl overflow-hidden border border-white/5 group-hover:border-red-500/50 transition-all relative shadow-xl bg-slate-900 will-change-transform">
+                    <img 
+                      src={anime.posterUrl} 
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" 
+                      referrerPolicy="no-referrer" 
+                      loading="lazy"
+                      decoding="async"
+                      alt={anime.title}
+                    />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                     {anime.rating >= 8.5 && (
                       <div className="absolute top-4 left-4 bg-red-600 px-3 py-1 rounded-lg text-[8px] font-black uppercase text-white shadow-lg">
@@ -1106,8 +1120,15 @@ export default function AnimePortal({
                   <div className="text-3xl font-black text-white/10 group-hover:text-red-500/20 italic tabular-nums w-10 shrink-0 text-center">
                     0{i+1}
                   </div>
-                  <div className="w-20 h-full rounded-2xl overflow-hidden border border-white/5 shrink-0 bg-slate-900">
-                    <img src={anime.posterUrl} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500 text-[0]" referrerPolicy="no-referrer" />
+                  <div className="w-20 h-full rounded-2xl overflow-hidden border border-white/5 shrink-0 bg-slate-900 will-change-transform">
+                    <img 
+                      src={anime.posterUrl} 
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500 text-[0]" 
+                      referrerPolicy="no-referrer" 
+                      loading="lazy"
+                      decoding="async"
+                      alt={anime.title}
+                    />
                   </div>
                   <div className="min-w-0 pr-2">
                     <h3 className="font-bold text-xs uppercase tracking-tight text-white group-hover:text-red-400 transition-colors line-clamp-2">{anime.title}</h3>
@@ -1147,8 +1168,15 @@ export default function AnimePortal({
                       {i+1}
                     </div>
                     <div className="flex items-center gap-4 relative z-10 w-full">
-                      <div className="w-16 h-20 rounded-xl overflow-hidden shrink-0 border border-white/5 group-hover:border-red-500/50 transition-colors bg-slate-900">
-                        <img src={anime.posterUrl} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500 text-[0]" referrerPolicy="no-referrer" />
+                      <div className="w-16 h-20 rounded-xl overflow-hidden shrink-0 border border-white/5 group-hover:border-red-500/50 transition-colors bg-slate-900 will-change-transform">
+                        <img 
+                          src={anime.posterUrl} 
+                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500 text-[0]" 
+                          referrerPolicy="no-referrer" 
+                          loading="lazy"
+                          decoding="async"
+                          alt={anime.title}
+                        />
                       </div>
                       <div className="min-w-0 pr-2">
                         <h4 className="font-black text-xs uppercase tracking-tight text-white line-clamp-2 group-hover:text-red-400 transition-colors">{anime.title}</h4>
@@ -1482,16 +1510,15 @@ export default function AnimePortal({
                        </div>
                     </div>
 
-                    <div className="flex-1 flex flex-col lg:flex-row overflow-hidden relative min-h-0">
-                       {/* Video Area */}
-                       <div className="w-full lg:flex-1 relative group bg-[#000000] min-h-[250px] sm:min-h-[450px]">
+                    <div className="flex-1 flex flex-col overflow-y-auto custom-scrollbar relative min-h-0 bg-[#0A0A0A]">
+                       {/* Video Area - Now Full Width */}
+                       <div className="w-full relative group bg-black shrink-0 aspect-video max-h-[75vh]">
                           {/* Video Loading State */}
                           {currentEpisode && videoLoading && (
                             <div className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-[#050505] transition-opacity">
-                               <div className="w-20 h-20 border-4 border-red-500/20 border-t-red-600 rounded-full animate-spin mb-8" />
-                               <div className="flex flex-col items-center gap-2">
-                                  <h4 className="text-xl font-black uppercase tracking-tighter">Preparing Stream</h4>
-                                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500 animate-pulse">Syncing high quality data...</p>
+                               <div className="w-12 h-12 border-4 border-red-500/20 border-t-red-600 rounded-full animate-spin mb-4" />
+                               <div className="flex flex-col items-center gap-1">
+                                  <h4 className="text-sm font-black uppercase tracking-tighter">Yuklanmoqda...</h4>
                                </div>
                             </div>
                           )}
@@ -1598,9 +1625,9 @@ export default function AnimePortal({
                                   animate={{ opacity: 1, x: 0 }}
                                   exit={{ opacity: 0, x: 20 }}
                                   onClick={skipOpening}
-                                  className="absolute bottom-32 right-12 z-[150] bg-red-600 hover:bg-red-500 text-white px-10 py-5 rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-2xl shadow-red-600/40 border border-red-400 flex items-center gap-4 transition-all"
+                                  className="absolute bottom-20 right-8 z-[150] bg-red-600 hover:bg-red-500 text-white px-8 py-4 rounded-xl font-black text-[10px] uppercase tracking-[0.2em] shadow-2xl shadow-red-600/40 border border-red-400 flex items-center gap-3 transition-all"
                                 >
-                                   <Sparkles size={20} />
+                                   <Sparkles size={16} />
                                    SKIP INTRO
                                 </motion.button>
                               )}
@@ -1608,65 +1635,111 @@ export default function AnimePortal({
                           </div>
                        </div>
 
-                       {/* Episode Selector Sidebar */}
-                        <div className="w-full lg:w-[400px] flex-1 lg:h-full bg-[var(--bg-deep)] lg:border-l border-white/5 flex flex-col overflow-hidden relative z-[120] transition-all duration-500 min-h-0">
-                           <div className="p-6 sm:p-8 border-b border-t lg:border-t-0 border-white/5 flex items-center justify-between bg-[var(--bg-deep)]/90 backdrop-blur-md shrink-0">
-                              <h4 className="text-xl font-black uppercase tracking-tighter text-white">{t('episodes')}</h4>
-                              <span className="text-[10px] font-black uppercase text-[var(--accent)] bg-[var(--accent)]/10 px-3 py-1 rounded-lg border border-[var(--accent)]/20">{episodes.length} TOTAL</span>
+                       {/* Episode Selector - Now Below Player and Compact */}
+                        <div className="w-full p-6 sm:p-10 space-y-8">
+                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/5 pb-6">
+                              <div className="space-y-1">
+                                <h4 className="text-xl sm:text-2xl font-black uppercase tracking-tighter text-white flex items-center gap-3">
+                                  <div className="w-1.5 h-6 bg-red-600 rounded-full" />
+                                  {t('episodes')}
+                                </h4>
+                                <p className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest">Jami: {episodes.length} ta qism yuklangan</p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => setShareModalOpen(true)}
+                                  className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-xs font-bold uppercase transition-colors"
+                                >
+                                  <Share2 size={14} />
+                                  Ulashish
+                                </button>
+                                <button
+                                  onClick={(e) => handleWatchlist(e, selectedAnime.id)}
+                                  className={cn(
+                                    "flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-xs font-bold uppercase transition-colors",
+                                    watchlist.has(selectedAnime.id) && "text-red-500"
+                                  )}
+                                >
+                                  <Heart size={14} className={watchlist.has(selectedAnime.id) ? "fill-current" : ""} />
+                                  Saqlash
+                                </button>
+                              </div>
                            </div>
                            
-                           <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar min-h-0 touch-pan-y overscroll-contain">
+                           <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12 gap-3">
                              {loadingEpisodes ? (
-                               <div className="grid grid-cols-1 gap-4">
-                                  {[1,2,3,4,5].map(i => (
-                                    <div key={i} className="h-20 bg-white/[0.02] rounded-2xl animate-pulse" />
-                                  ))}
-                               </div>
+                               Array.from({ length: 12 }).map((_, i) => (
+                                 <div key={i} className="aspect-square bg-white/[0.02] border border-white/5 rounded-xl animate-pulse" />
+                               ))
                              ) : (
-                               episodes.map((ep, idx) => (
+                               episodes.map((ep) => (
                                  <button
                                    key={ep.id}
                                    onClick={() => handleEpisodeSelect(ep)}
                                    className={cn(
-                                     "w-full group flex flex-col gap-3 p-5 rounded-2xl border transition-all text-left",
+                                     "aspect-square flex flex-col items-center justify-center rounded-xl border-2 transition-all relative group overflow-hidden",
                                      currentEpisode?.id === ep.id 
-                                       ? "bg-red-600/20 border-red-500/50 shadow-lg shadow-red-600/10" 
-                                       : "bg-white/[0.02] border-white/5 hover:bg-white/[0.05] hover:border-white/20"
+                                       ? "bg-red-600 border-red-500 shadow-lg shadow-red-600/20" 
+                                       : "bg-white/[0.02] border-white/5 hover:bg-white/[0.05] hover:border-red-500/50"
                                    )}
                                  >
-                                   <div className="flex items-center justify-between">
-                                      <div className="flex items-center gap-3">
-                                         <span className={cn(
-                                           "text-[10px] font-black tabular-nums w-6",
-                                           currentEpisode?.id === ep.id ? "text-red-400" : "text-slate-600"
-                                         )}>
-                                           {idx < 9 ? `0${idx+1}` : idx+1}
-                                         </span>
-                                         <span className={cn(
-                                           "text-sm font-black uppercase tracking-tight",
-                                           currentEpisode?.id === ep.id ? "text-white" : "text-slate-300"
-                                         )}>
-                                           {ep.title || `Episode ${ep.episodeNumber}`}
-                                         </span>
-                                      </div>
-                                      {currentEpisode?.id === ep.id && (
-                                        <div className="flex gap-1">
-                                           <div className="w-1 h-3 bg-red-500 animate-pulse rounded-full" />
-                                           <div className="w-1 h-2 bg-red-500 animate-pulse delay-75 rounded-full" />
-                                           <div className="w-1 h-4 bg-red-500 animate-pulse delay-150 rounded-full" />
-                                        </div>
-                                      )}
-                                   </div>
-                                   <div className="flex items-center gap-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-9">
-                                      <span>24 MIN</span>
-                                      <span>•</span>
-                                      <span>HD 1080P</span>
-                                   </div>
+                                    <span className={cn(
+                                      "text-sm font-black transition-colors relative z-10",
+                                      currentEpisode?.id === ep.id ? "text-white" : "text-slate-400 group-hover:text-white"
+                                    )}>
+                                      {ep.episodeNumber}
+                                    </span>
+                                    {currentEpisode?.id === ep.id && (
+                                      <motion.div 
+                                        layoutId="activeEp"
+                                        className="absolute inset-0 bg-gradient-to-tr from-red-600 to-red-500 z-0" 
+                                      />
+                                    )}
+                                    <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
                                  </button>
                                ))
                              )}
-                          </div>
-                       </div>
+                           </div>
+
+                           {/* Description & Info below episodes for player mode */}
+                           <div className="mt-12 pt-12 border-t border-white/5">
+                              <div className="flex flex-col lg:flex-row gap-10">
+                                 <div className="shrink-0 w-32 aspect-[2/3] rounded-xl overflow-hidden border border-white/10 hidden sm:block will-change-transform">
+                                    <img 
+                                      src={selectedAnime.posterUrl} 
+                                      className="w-full h-full object-cover" 
+                                      referrerPolicy="no-referrer" 
+                                      alt={selectedAnime.title} 
+                                      loading="lazy"
+                                      decoding="async"
+                                    />
+                                 </div>
+                                 <div className="flex-1 space-y-4">
+                                    <h4 className="text-xl font-black uppercase text-white tracking-tight">{selectedAnime.title} haqida</h4>
+                                    <p className="text-sm text-slate-400 leading-relaxed max-w-4xl">
+                                      {selectedAnime.description}
+                                    </p>
+                                    <div className="flex flex-wrap gap-4 pt-2">
+                                       <div className="flex flex-col gap-1">
+                                          <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">Reyting</span>
+                                          <span className="text-xs font-black text-amber-500 flex items-center gap-1">
+                                             <Star size={12} fill="currentColor" />
+                                             {selectedAnime.rating}
+                                          </span>
+                                       </div>
+                                       <div className="flex flex-col gap-1">
+                                          <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">Yil</span>
+                                          <span className="text-xs font-black text-white">{selectedAnime.year}</span>
+                                       </div>
+                                       <div className="flex flex-col gap-1">
+                                          <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">Janr</span>
+                                          <span className="text-xs font-black text-white uppercase">{selectedAnime.category}</span>
+                                       </div>
+                                    </div>
+                                 </div>
+                              </div>
+                           </div>
+                        </div>
                     </div>
                   </motion.div>
                 )}

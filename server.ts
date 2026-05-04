@@ -1,6 +1,3 @@
-import dotenv from "dotenv";
-dotenv.config();
-
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
@@ -12,7 +9,12 @@ import { Resend } from "resend";
 import admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
-import firebaseConfig from "./firebase-applet-config.json" with { type: "json" };
+import dotenv from "dotenv";
+
+dotenv.config();
+
+// Load firebase config safely
+const firebaseConfig = JSON.parse(fs.readFileSync("./firebase-applet-config.json", "utf-8"));
 import { slugify } from "./src/lib/slugs.js";
 
 // CRITICAL: Force the project ID into the environment to prevent the SDK 

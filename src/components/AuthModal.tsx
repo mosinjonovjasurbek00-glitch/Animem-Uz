@@ -72,7 +72,19 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
           body: JSON.stringify({ token: turnstileToken })
         });
         
-        const verifyData = await verifyRes.json();
+        let verifyData;
+        try {
+          const text = await verifyRes.text();
+          try {
+            verifyData = JSON.parse(text);
+          } catch (e) {
+            console.error("Non-JSON response from captcha verify:", text);
+            throw new Error("Serverda xatolik yuz berdi. Iltimos keyinroq qayta urinib ko'ring.");
+          }
+        } catch (e: any) {
+          throw new Error(e.message || "Captcha tekshiruvi xatosi");
+        }
+
         if (!verifyData.success) {
           throw new Error(verifyData.message || "Captcha tekshiruvi xatosi");
         }

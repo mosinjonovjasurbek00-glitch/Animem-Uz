@@ -15,16 +15,16 @@ interface Leaf {
 
 export const FallingLeaves = () => {
   const leaves = useMemo(() => {
-    return Array.from({ length: 20 }, (_, i) => ({
+    return Array.from({ length: 12 }, (_, i) => ({
       id: i,
       x: Math.random() * 100,
       y: -20,
-      size: Math.random() * 8 + 6,
+      size: Math.random() * 6 + 4,
       rotation: Math.random() * 360,
-      duration: Math.random() * 15 + 10,
-      delay: Math.random() * 10,
-      horizontalMovement: Math.random() * 60 - 30,
-      color: i % 3 === 0 ? 'bg-indigo-500/20' : (i % 3 === 1 ? 'bg-violet-400/20' : 'bg-fuchsia-400/20')
+      duration: Math.random() * 20 + 15,
+      delay: Math.random() * 15,
+      horizontalMovement: Math.random() * 40 - 20,
+      color: i % 3 === 0 ? 'bg-indigo-500/10' : (i % 3 === 1 ? 'bg-violet-400/10' : 'bg-fuchsia-400/10')
     }));
   }, []);
 

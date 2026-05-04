@@ -117,7 +117,7 @@ export default function Navbar({ isAdmin, view, setView, selectedCategory, setSe
 
   return (
     <>
-      <nav className="fixed top-0 left-0 lg:left-24 right-0 z-[120] h-16 sm:h-20 bg-[#050505]/95 backdrop-blur-2xl px-4 lg:px-12 flex items-center justify-between font-sans border-b border-white/[0.08] shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
+      <nav className="fixed top-0 left-0 lg:left-24 right-0 z-[120] h-16 sm:h-20 bg-[#050505]/95 backdrop-blur-2xl px-4 lg:px-12 flex items-center justify-between font-sans border-b border-white/[0.08] shadow-[0_4px_30px_rgba(0,0,0,0.5)] will-change-transform">
         {/* Left: Logo */}
         <div 
           className="flex items-center gap-3 sm:gap-5 cursor-pointer group shrink-0"
@@ -158,7 +158,7 @@ export default function Navbar({ isAdmin, view, setView, selectedCategory, setSe
                   repeat: Infinity, 
                   ease: "linear" 
                 }}
-                className="flex items-center gap-16 whitespace-nowrap"
+                className="flex items-center gap-16 whitespace-nowrap will-change-transform"
               >
                 {[...dynamicNews, ...dynamicNews, ...dynamicNews].map((item, idx) => (
                   <span key={idx} className="text-[10px] font-bold text-slate-400 hover:text-white transition-colors cursor-pointer uppercase tracking-[0.2em]">
