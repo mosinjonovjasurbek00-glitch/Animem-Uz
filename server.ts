@@ -176,36 +176,40 @@ async function setupServer() {
       const secretKey = process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY || '0x4AAAAAAC_bMjdxOF0heoEKSApYVqf_fu4';
 
       if (!token) {
-        console.warn("[Captcha] Missing token in request");
+        console.warn("[Captcha] No token provided");
         return res.status(400).json({ success: false, message: "Captcha tokeni talab qilinadi" });
       }
 
-      console.log("[Captcha] Verifying with Cloudflare...");
-      const verifyRes = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: `secret=${encodeURIComponent(secretKey)}&response=${encodeURIComponent(token)}`,
-      });
+      console.log("[Captcha] Verifying with Cloudflare using axios...");
+      const formData = new URLSearchParams();
+      formData.append('secret', secretKey);
+      formData.append('response', token);
 
-      const verifyData = await verifyRes.json() as any;
-      console.log("[Captcha] Cloudflare response data:", verifyData);
+      const result = await axios.post(
+        'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+        formData.toString(),
+        { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+      );
+
+      const verifyData = result.data;
+      console.log("[Captcha] Cloudflare Response:", JSON.stringify(verifyData));
 
       if (verifyData.success) {
-        console.log("[Captcha] Verification SUCCESS");
-        res.json({ success: true });
+        return res.json({ success: true });
       } else {
         console.warn("[Captcha] Verification FAILED:", verifyData['error-codes']);
-        res.status(403).json({ 
+        return res.status(403).json({ 
           success: false, 
           message: "Captcha tekshiruvi muvaffaqiyatsiz bo'ldi", 
           errors: verifyData['error-codes'] 
         });
       }
-    } catch (error: any) {
-      console.error("[Captcha] CRITICAL ERROR:", error);
-      res.status(500).json({ success: false, message: "Ichki server xatosi: " + error.message });
+    } catch (err: any) {
+      console.error("[Captcha] Request Error:", err.message);
+      if (err.response) {
+        console.error("[Captcha] Error Response Data:", err.response.data);
+      }
+      return res.status(500).json({ success: false, message: "Ichki server xatosi: " + err.message });
     }
   });
   

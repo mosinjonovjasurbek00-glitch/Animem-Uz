@@ -75,11 +75,15 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
         let verifyData;
         try {
           const text = await verifyRes.text();
+          if (!verifyRes.ok) {
+            console.error("Server error response:", text);
+            throw new Error(`Server xatosi (${verifyRes.status}). Iltimos keyinroq qayta urinib ko'ring.`);
+          }
           try {
             verifyData = JSON.parse(text);
           } catch (e) {
             console.error("Non-JSON response from captcha verify:", text);
-            throw new Error("Serverda xatolik yuz berdi. Iltimos keyinroq qayta urinib ko'ring.");
+            throw new Error("Serverda kutilmagan xatolik yuz berdi. Iltimos keyinroq qayta urinib ko'ring.");
           }
         } catch (e: any) {
           throw new Error(e.message || "Captcha tekshiruvi xatosi");

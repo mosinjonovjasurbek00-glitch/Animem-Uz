@@ -746,6 +746,21 @@ export default function AnimePortal({
     }
   };
 
+  const handleCloseAnime = () => {
+    navigate('/');
+  };
+
+  // Add escape key listener
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && selectedAnime) {
+        handleCloseAnime();
+      }
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [selectedAnime]);
+
   const handleOpenAnime = (anime: AnimeDoc, mode: 'details' | 'player' = 'details') => {
     const slug = slugify(anime.title);
     if (mode === 'details') {
@@ -797,7 +812,7 @@ export default function AnimePortal({
 
   return (
     <div className="flex flex-col min-w-0">
-      <Helmet>
+      <Helmet key={selectedAnime?.id || activeTab}>
         <title>{getTitle()}</title>
         <meta name="description" content={selectedAnime ? selectedAnime.description : 'Animem.uz - O\'zbekistondagi eng yirik anime portali. Barcha animelar o\'zbek tilida, sifatli ovozda va HD formatda.'} />
         <meta property="og:title" content={getTitle()} />
@@ -1206,14 +1221,14 @@ export default function AnimePortal({
           >
             <div 
               className="absolute inset-0 z-0" 
-              onClick={() => setSelectedAnime(null)} 
+              onClick={handleCloseAnime} 
             />
             
             <div
               className="relative z-10 w-full h-full bg-[#0A0A0A] overflow-hidden border border-white/10 shadow-2xl flex flex-col"
             >
               <button 
-                onClick={() => setSelectedAnime(null)} 
+                onClick={handleCloseAnime} 
                 className="absolute top-4 right-4 z-[999] p-2 bg-black/60 hover:bg-black/90 text-white rounded-full transition-all border border-white/20 active:scale-90"
               >
                 <XCircle size={24} className="sm:w-7 sm:h-7" />
