@@ -11,7 +11,6 @@ import {
 import { Loader2, X, Mail, Lock, User, ArrowRight, ChevronLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useTranslation, Language } from '../i18n';
-import { Turnstile, TurnstileInstance } from '@marsidev/react-turnstile';
 
 interface AuthModalProps {
   onSuccess: () => void;
@@ -28,11 +27,6 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   
-  // Turnstile state
-  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
-  const turnstileRef = useRef<TurnstileInstance>(null);
-  const TURNSTILE_SITE_KEY = import.meta.env.VITE_CLOUDFLARE_TURNSTILE_SITE_KEY || '0x4AAAAAAC_bMoaIUWmn54Wj';
-
   // Form states
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -54,47 +48,12 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (mode !== 'forgot' && !turnstileToken) {
-      setError("Iltimos, robot emasligingizni tasdiqlang");
-      return;
-    }
-
     setLoading(true);
     setError(null);
     setMessage(null);
 
     try {
-      // 1. Verify captcha on server-side
-      if (mode !== 'forgot') {
-        const verifyRes = await fetch('/api/verify-turnstile', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: turnstileToken })
-        });
-        
-        let verifyData;
-        try {
-          const text = await verifyRes.text();
-          if (!verifyRes.ok) {
-            console.error("Server error response:", text);
-            throw new Error(`Server xatosi (${verifyRes.status}). Iltimos keyinroq qayta urinib ko'ring.`);
-          }
-          try {
-            verifyData = JSON.parse(text);
-          } catch (e) {
-            console.error("Non-JSON response from captcha verify:", text);
-            throw new Error("Serverda kutilmagan xatolik yuz berdi. Iltimos keyinroq qayta urinib ko'ring.");
-          }
-        } catch (e: any) {
-          throw new Error(e.message || "Captcha tekshiruvi xatosi");
-        }
-
-        if (!verifyData.success) {
-          throw new Error(verifyData.message || "Captcha tekshiruvi xatosi");
-        }
-      }
-
-      // 2. Proceed with Firebase Auth
+      // Proceed with Firebase Auth
       if (mode === 'signup') {
         if (!username) throw new Error("Iltimos, foydalanuvchi nomini kiriting");
         const result = await firebaseSignUp(auth, email, password);
@@ -119,9 +78,6 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
       if (err.code === 'auth/invalid-email') msg = 'Email manzili noto\'g\'ri';
       
       setError(msg);
-      // Reset turnstile on error
-      turnstileRef.current?.reset();
-      setTurnstileToken(null);
     } finally {
       setLoading(false);
     }
@@ -157,8 +113,6 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
               setMode('select');
               setError(null);
               setMessage(null);
-              setTurnstileToken(null);
-              turnstileRef.current?.reset();
             }} 
             className="absolute top-6 left-6 p-2 text-slate-500 hover:text-white transition-colors bg-white/5 rounded-full z-20"
           >
@@ -278,8 +232,6 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
                     onClick={() => {
                       setMode('forgot');
                       setError(null);
-                      setTurnstileToken(null);
-                      turnstileRef.current?.reset();
                     }}
                     className="text-[10px] text-slate-500 hover:text-white transition-colors"
                   >
@@ -288,30 +240,6 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
                 </div>
               )}
               
-              {mode !== 'forgot' && (
-                <div className="flex justify-center py-2">
-                  <Turnstile 
-                    ref={turnstileRef}
-                    siteKey={TURNSTILE_SITE_KEY} 
-                    onSuccess={(token) => {
-                      setTurnstileToken(token);
-                      setError(null);
-                    }}
-                    onError={() => {
-                      setError("Captcha yuklashda xatolik yuz berdi");
-                      setTurnstileToken(null);
-                    }}
-                    onExpire={() => {
-                      setTurnstileToken(null);
-                    }}
-                    options={{
-                      theme: 'dark',
-                      size: 'normal',
-                    }}
-                  />
-                </div>
-              )}
-
               <button 
                 type="submit"
                 disabled={loading}
@@ -334,8 +262,6 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
                   onClick={() => {
                     setMode(mode === 'login' ? 'signup' : 'login');
                     setError(null);
-                    setTurnstileToken(null);
-                    turnstileRef.current?.reset();
                   }}
                   className="text-red-500 ml-2 font-bold hover:underline"
                 >

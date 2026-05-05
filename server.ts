@@ -167,51 +167,6 @@ async function setupServer() {
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
-
-  // Cloudflare Turnstile verification
-  app.post("/api/verify-turnstile", async (req, res) => {
-    console.log("[Captcha] Verification request received");
-    try {
-      const { token } = req.body || {};
-      const secretKey = process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY || '0x4AAAAAAC_bMjdxOF0heoEKSApYVqf_fu4';
-
-      if (!token) {
-        console.warn("[Captcha] No token provided");
-        return res.status(400).json({ success: false, message: "Captcha tokeni talab qilinadi" });
-      }
-
-      console.log("[Captcha] Verifying with Cloudflare using axios...");
-      const formData = new URLSearchParams();
-      formData.append('secret', secretKey);
-      formData.append('response', token);
-
-      const result = await axios.post(
-        'https://challenges.cloudflare.com/turnstile/v0/siteverify',
-        formData.toString(),
-        { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
-      );
-
-      const verifyData = result.data;
-      console.log("[Captcha] Cloudflare Response:", JSON.stringify(verifyData));
-
-      if (verifyData.success) {
-        return res.json({ success: true });
-      } else {
-        console.warn("[Captcha] Verification FAILED:", verifyData['error-codes']);
-        return res.status(403).json({ 
-          success: false, 
-          message: "Captcha tekshiruvi muvaffaqiyatsiz bo'ldi", 
-          errors: verifyData['error-codes'] 
-        });
-      }
-    } catch (err: any) {
-      console.error("[Captcha] Request Error:", err.message);
-      if (err.response) {
-        console.error("[Captcha] Error Response Data:", err.response.data);
-      }
-      return res.status(500).json({ success: false, message: "Ichki server xatosi: " + err.message });
-    }
-  });
   
   // Katta videolarni serverdan parchalab uzatish yo'li
   app.get("/api/telegram/stream", async (req, res) => {

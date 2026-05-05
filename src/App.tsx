@@ -20,6 +20,7 @@ import PushNotificationInitializer from './components/PushNotificationInitialize
 import Sidebar from './components/Sidebar';
 import BottomNav from './components/BottomNav';
 import Chat from './components/Chat';
+import { TelegramBanner } from './components/TelegramBanner';
 import { Language, useTranslation } from './i18n';
 
 export default function App() {
@@ -214,6 +215,7 @@ function AppContent({
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
       </Helmet>
+      <TelegramBanner />
       <Navbar 
         isAdmin={isAdmin} 
         view={view} 
