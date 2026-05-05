@@ -4,7 +4,7 @@ import { BrowserRouter, Routes, Route, useNavigate, useParams, useLocation } fro
 import { HelmetProvider } from 'react-helmet-async';
 import { auth, db, syncUserToFirestore, handleFirestoreError, OperationType } from './firebase';
 import { useAuthState } from 'react-firebase-hooks/auth';
-import { doc, getDoc, setDoc, collection, query, orderBy, onSnapshot, getDocFromServer } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, query, orderBy, onSnapshot, getDocFromServer, increment } from 'firebase/firestore';
 import { getRedirectResult } from 'firebase/auth';
 import { Helmet } from 'react-helmet-async';
 import Navbar from './components/Navbar';
@@ -142,6 +142,23 @@ function AppContent({
     else if (location.pathname.startsWith('/anime/')) setActiveTab('gallery');
     else if (location.pathname.startsWith('/watch/')) setActiveTab('gallery');
   }, [location.pathname]);
+
+  useEffect(() => {
+    // Visitor tracking
+    const trackVisitor = async () => {
+      const hasVisited = sessionStorage.getItem('visted_this_session');
+      if (!hasVisited) {
+        try {
+          const statsRef = doc(db, 'stats', 'visitors');
+          await setDoc(statsRef, { count: increment(1) }, { merge: true });
+          sessionStorage.setItem('visted_this_session', 'true');
+        } catch (err) {
+          console.debug("Visitor tracking failed:", err);
+        }
+      }
+    };
+    trackVisitor();
+  }, []);
 
   useEffect(() => {
     const qAnime = query(collection(db, 'anime'));

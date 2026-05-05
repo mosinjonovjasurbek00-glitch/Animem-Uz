@@ -26,6 +26,8 @@ service cloud.firestore {
     match /anime/{animeId} {
       allow read: if true;
       allow write: if isAdmin();
+      allow update: if isSignedIn() && 
+                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rating', 'ratingsCount']);
       
       // Subcollections (Episodes)
       match /episodes/{episodeId} {
@@ -88,6 +90,11 @@ service cloud.firestore {
       allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
       allow write: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow delete: if isSignedIn();
+    }
+    // Stats Collection
+    match /stats/{docId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin() || (docId == 'visitors' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['count']));
     }
   }
 }

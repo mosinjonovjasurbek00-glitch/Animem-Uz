@@ -3,7 +3,7 @@ import { db, auth, storage, handleFirestoreError, OperationType } from '../fireb
 import { collection, addDoc, deleteDoc, doc, query, onSnapshot, serverTimestamp, where, updateDoc, getDocs, orderBy, writeBatch, getDoc, setDoc } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { Helmet } from 'react-helmet-async';
-import { Plus, Trash2, Film, Check, X, AlertCircle, Loader2, Upload, Link as LinkIcon, MessageSquare, Star, Clock, Play, List, ChevronRight, ArrowLeft, Send, User, Globe, Sparkles } from 'lucide-react';
+import { Plus, Trash2, Film, Check, X, AlertCircle, Loader2, Upload, Link as LinkIcon, MessageSquare, Star, Clock, Play, List, ChevronRight, ArrowLeft, Send, User, Globe, Sparkles, TrendingUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { CATEGORIES, categoryKeys } from '../constants';
@@ -88,6 +88,28 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [stats, setStats] = useState({ visitors: 0, users: 0, animes: 0 });
+
+  useEffect(() => {
+    // Visitor stats
+    const unsubVisitors = onSnapshot(doc(db, 'stats', 'visitors'), (docSnap) => {
+      if (docSnap.exists()) {
+        setStats(prev => ({ ...prev, visitors: docSnap.data().count || 0 }));
+      }
+    });
+
+    // Total users count
+    const qUsers = query(collection(db, 'users'));
+    getDocs(qUsers).then(snap => {
+      setStats(prev => ({ ...prev, users: snap.size }));
+    });
+
+    return () => unsubVisitors();
+  }, []);
+
+  useEffect(() => {
+    setStats(prev => ({ ...prev, animes: animeList.length }));
+  }, [animeList.length]);
 
   // Confirmation state
   const [confirmModal, setConfirmModal] = useState<{
@@ -767,6 +789,38 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
         >
           <Sparkles size={16} /> {language === 'uz' ? 'HOT Ticker' : 'ГОРЯЧЕЕ'}
         </button>
+      </div>
+
+      {/* Stats Dashboard */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-12">
+        <div className="glass p-6 rounded-3xl flex flex-col items-center justify-center gap-2 group hover:bg-red-500/5 transition-colors border border-white/5">
+          <div className="w-12 h-12 rounded-full bg-red-600/20 flex items-center justify-center text-red-500 group-hover:scale-110 transition-transform">
+            <Globe size={24} />
+          </div>
+          <span className="text-3xl font-black tabular-nums">{stats.visitors}</span>
+          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Tashrif buyuruvchilar</span>
+        </div>
+        <div className="glass p-6 rounded-3xl flex flex-col items-center justify-center gap-2 group hover:bg-amber-500/5 transition-colors border border-white/5">
+          <div className="w-12 h-12 rounded-full bg-amber-600/20 flex items-center justify-center text-amber-500 group-hover:scale-110 transition-transform">
+            <User size={24} />
+          </div>
+          <span className="text-3xl font-black tabular-nums">{stats.users}</span>
+          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Foydalanuvchilar</span>
+        </div>
+        <div className="glass p-6 rounded-3xl flex flex-col items-center justify-center gap-2 group hover:bg-emerald-500/5 transition-colors border border-white/5">
+          <div className="w-12 h-12 rounded-full bg-emerald-600/20 flex items-center justify-center text-emerald-500 group-hover:scale-110 transition-transform">
+            <Film size={24} />
+          </div>
+          <span className="text-3xl font-black tabular-nums">{stats.animes}</span>
+          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Animelar</span>
+        </div>
+        <div className="glass p-6 rounded-3xl flex flex-col items-center justify-center gap-2 group hover:bg-blue-500/5 transition-colors border border-white/5">
+          <div className="w-12 h-12 rounded-full bg-blue-600/20 flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform">
+            <TrendingUp size={24} />
+          </div>
+          <span className="text-3xl font-black tabular-nums">{animeList.reduce((acc, a) => acc + (a.views || 0), 0)}</span>
+          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Jami Ko'rishlar</span>
+        </div>
       </div>
 
       <AnimatePresence mode="wait">

@@ -5,8 +5,8 @@ import { Helmet } from 'react-helmet-async';
 import { slugify } from '../lib/slugs';
 import { db, auth, loginWithGoogle } from '../firebase';
 import { useAuthState } from 'react-firebase-hooks/auth';
-import { collection, query, orderBy, onSnapshot, doc, getDoc, setDoc, deleteDoc, writeBatch, serverTimestamp, where, increment, getDocs, addDoc, limit } from 'firebase/firestore';
-import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, Monitor, Settings, Star, Calendar, Clock, Search, Eye, X as CloseIcon, Loader2, Heart, Film, Sparkles, ChevronRight, Activity, TrendingUp, Check, ArrowLeft, MessageSquare, Send, User, Trash2, Filter, ChevronDown, RotateCcw, XCircle, Share2, Copy, Home, LayoutGrid, Bookmark, LogOut, Plus, Smile, SkipBack, SkipForward } from 'lucide-react';
+import { collection, query, orderBy, onSnapshot, doc, getDoc, setDoc, deleteDoc, writeBatch, serverTimestamp, where, increment, getDocs, addDoc, limit, updateDoc } from 'firebase/firestore';
+import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, Monitor, Settings, Star, Calendar, Clock, Search, Eye, X as CloseIcon, Loader2, Heart, Film, Sparkles, ChevronRight, ChevronLeft, Activity, TrendingUp, Check, ArrowLeft, MessageSquare, Send, User, Trash2, Filter, ChevronDown, RotateCcw, XCircle, Share2, Copy, Home, LayoutGrid, Bookmark, LogOut, Plus, Smile, SkipBack, SkipForward } from 'lucide-react';
 import { ShareModal } from './ShareModal';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
@@ -18,7 +18,9 @@ interface AnimeDoc {
   posterUrl: string;
   description: string;
   category: string;
+  genres?: string[];
   rating: number;
+  ratingsCount?: number;
   year: number;
   type: 'movie' | 'series';
   views: number;
@@ -478,11 +480,86 @@ export default function AnimePortal({
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [expandedDesc, setExpandedDesc] = useState(false);
+  const [userRating, setUserRating] = useState<number | null>(null);
+
+  const [relatedAnimes, setRelatedAnimes] = useState<AnimeDoc[]>([]);
+
+  // Update related animes when selection changes
+  useEffect(() => {
+    if (selectedAnime) {
+      const related = animeList
+        .filter(a => a.id !== selectedAnime.id && (a.category === selectedAnime.category || a.genres?.some(g => selectedAnime.genres?.includes(g))))
+        .sort((a, b) => b.rating - a.rating)
+        .slice(0, 6);
+      setRelatedAnimes(related);
+    }
+  }, [selectedAnime, animeList]);
+
+  const handleRateAnime = async (rating: number) => {
+    if (!user) {
+      onAuthRequired();
+      return;
+    }
+    if (!selectedAnime) return;
+    
+    try {
+      const animeRef = doc(db, 'anime', selectedAnime.id);
+      const currentRating = selectedAnime.rating || 0;
+      const currentCount = selectedAnime.ratingsCount || 0;
+      
+      const newCount = currentCount + 1;
+      const newAverage = ((currentRating * currentCount) + rating) / newCount;
+      
+      await updateDoc(animeRef, {
+        rating: Number(newAverage.toFixed(1)),
+        ratingsCount: newCount
+      });
+      setUserRating(rating);
+    } catch (error) {
+      console.error("Rating error:", error);
+    }
+  };
   const [filterYear, setFilterYear] = useState<string>('All');
   const [filterType, setFilterType] = useState<string>('All');
   const [filterStatus, setFilterStatus] = useState<string>('All');
   const [showFilters, setShowFilters] = useState(false);
   const [history, setHistory] = useState<any[]>([]);
+  const trendingRef = useRef<HTMLDivElement>(null);
+  const popularRef = useRef<HTMLDivElement>(null);
+  const topRatingRef = useRef<HTMLDivElement>(null);
+
+  const scrollHandler = (ref: React.RefObject<HTMLDivElement>, direction: 'left' | 'right') => {
+    if (ref.current) {
+      const scrollAmount = direction === 'left' ? -ref.current.offsetWidth * 0.8 : ref.current.offsetWidth * 0.8;
+      ref.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+    }
+  };
+
+  // Function to save watching progress
+  useEffect(() => {
+    if (!user || !selectedAnime || !currentEpisode || currentTime === 0) return;
+
+    // Save every 10 seconds or when significantly changed
+    const interval = setInterval(async () => {
+      try {
+        const historyId = `${user.uid}_${selectedAnime.id}`;
+        await setDoc(doc(db, 'history', historyId), {
+          userId: user.uid,
+          animeId: selectedAnime.id,
+          episodeId: currentEpisode.id,
+          episodeNumber: currentEpisode.episodeNumber,
+          progress: currentTime,
+          animeTitle: selectedAnime.title,
+          posterUrl: selectedAnime.posterUrl,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+      } catch (err) {
+        console.error("Save history error:", err);
+      }
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [user, selectedAnime, currentEpisode, currentTime]);
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const itemsPerPage = 12;
 
@@ -560,6 +637,8 @@ export default function AnimePortal({
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  const [sortBy, setSortBy] = useState<'latest' | 'rating' | 'year'>('latest');
+
   let filteredAnime = animeList.filter(anime => {
     const matchesSearch = anime.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           anime.description?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -574,12 +653,21 @@ export default function AnimePortal({
         case 'series': matchesTab = anime.type === 'series'; break;
         case 'watchlist': matchesTab = watchlist.has(anime.id); break;
         case 'saved': matchesTab = watchlist.has(anime.id); break; 
-        default: matchesTab = true; // 'gallery', 'schedule', 'genres' - show all (or implement specific logic later)
+        default: matchesTab = true; 
     }
 
     const matchesStatus = filterStatus === 'All' || (anime as any).status === filterStatus;
     
     return matchesSearch && matchesCategory && matchesWatchlist && matchesYear && matchesStatus && matchesTab;
+  });
+
+  // Apply sorting
+  filteredAnime = [...filteredAnime].sort((a, b) => {
+    if (sortBy === 'rating') return (b.rating || 0) - (a.rating || 0);
+    if (sortBy === 'year') return (b.year || 0) - (a.year || 0);
+    
+    const getTs = (d: any) => typeof d === 'number' ? d : (d?.toMillis ? d.toMillis() : (d?.toDate ? d.toDate().getTime() : 0));
+    return getTs(b.createdAt) - getTs(a.createdAt);
   });
 
   if (activeTab === 'news') {
@@ -747,6 +835,8 @@ export default function AnimePortal({
   };
 
   const handleCloseAnime = () => {
+    setSelectedAnime(null);
+    setCurrentEpisode(null);
     navigate('/');
   };
 
@@ -969,7 +1059,22 @@ export default function AnimePortal({
                          activeTab === 'anime' && selectedCategory === 'All' ? t('anime' as any) :
                          t((categoryKeys[selectedCategory] || selectedCategory) as any)}
                      </h2>
-                     <p className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-500">Showing {filteredAnime.length} results</p>
+                      <div className="flex items-center gap-4">
+                        <p className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-500">Showing {filteredAnime.length} results</p>
+                        <div className="h-1 w-1 rounded-full bg-slate-700" />
+                        <div className="flex items-center gap-2">
+                          <span className="text-[8px] font-black uppercase tracking-widest text-slate-600">Saralash:</span>
+                          <select 
+                            value={sortBy}
+                            onChange={(e) => setSortBy(e.target.value as any)}
+                            className="bg-transparent text-[8px] font-black uppercase tracking-widest text-red-500 focus:outline-none cursor-pointer"
+                          >
+                            <option value="latest" className="bg-[#12121F]">Yangi</option>
+                            <option value="rating" className="bg-[#12121F]">Reyting</option>
+                            <option value="year" className="bg-[#12121F]">Yil</option>
+                          </select>
+                        </div>
+                      </div>
                   </div>
                   
                   {/* Action Buttons for Filter View */}
@@ -1076,12 +1181,28 @@ export default function AnimePortal({
                 <div className="w-1.5 h-6 bg-red-500 rounded-full" />
                 {t('trendingNow' as any)}
               </h2>
-              <button onClick={() => { setActiveTab('anime'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-[10px] font-black text-slate-500 hover:text-red-400 uppercase tracking-widest transition-colors flex items-center gap-2 group">
-                {t('seeAll' as any)}
-                <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
-              </button>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 mr-2">
+                  <button 
+                    onClick={() => scrollHandler(trendingRef, 'left')}
+                    className="w-8 h-8 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-full text-white transition-all active:scale-90 border border-white/5"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <button 
+                    onClick={() => scrollHandler(trendingRef, 'right')}
+                    className="w-8 h-8 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-full text-white transition-all active:scale-90 border border-white/5"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+                <button onClick={() => { setActiveTab('anime'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-[10px] font-black text-slate-500 hover:text-red-400 uppercase tracking-widest transition-colors flex items-center gap-2 group">
+                  {t('seeAll' as any)}
+                  <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
+                </button>
+              </div>
             </div>
-            <div className="flex gap-6 overflow-x-auto no-scrollbar pb-4 -mx-4 px-4">
+            <div ref={trendingRef} className="flex gap-6 overflow-x-auto no-scrollbar pb-4 -mx-4 px-4 scroll-smooth">
               {animeList.sort((a, b) => (b.views || 0) - (a.views || 0)).slice(0, 10).map((anime) => (
                 <div 
                   key={`trending-${anime.id}`}
@@ -1120,12 +1241,28 @@ export default function AnimePortal({
                 <div className="w-1.5 h-6 bg-red-500 rounded-full" />
                 {t('popularThisWeek' as any)}
               </h2>
-              <button onClick={() => { setActiveTab('anime'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-[10px] font-black text-slate-500 hover:text-red-400 uppercase tracking-widest transition-colors flex items-center gap-2 group">
-                {t('seeAll' as any)}
-                <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
-              </button>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 mr-2">
+                  <button 
+                    onClick={() => scrollHandler(popularRef, 'left')}
+                    className="w-8 h-8 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-full text-white transition-all active:scale-90 border border-white/5"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <button 
+                    onClick={() => scrollHandler(popularRef, 'right')}
+                    className="w-8 h-8 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-full text-white transition-all active:scale-90 border border-white/5"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+                <button onClick={() => { setActiveTab('anime'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-[10px] font-black text-slate-500 hover:text-red-400 uppercase tracking-widest transition-colors flex items-center gap-2 group">
+                  {t('seeAll' as any)}
+                  <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
+                </button>
+              </div>
             </div>
-            <div className="flex gap-6 overflow-x-auto no-scrollbar pb-4 -mx-4 px-4">
+            <div ref={popularRef} className="flex gap-6 overflow-x-auto no-scrollbar pb-4 -mx-4 px-4 scroll-smooth">
               {animeList.filter(a => a.rating >= 8.5).slice(0, 10).map((anime, i) => (
                 <div 
                   key={`popular-${anime.id}`}
@@ -1166,13 +1303,29 @@ export default function AnimePortal({
                   <div className="w-1.5 h-6 bg-red-500 rounded-full" />
                   {t('topRating' as any)}
                 </h2>
-                <button onClick={() => { setActiveTab('anime'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-[10px] font-black text-slate-500 hover:text-red-400 uppercase tracking-widest transition-colors flex items-center gap-2 group">
-                  {t('seeAll' as any)}
-                  <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
-                </button>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2 mr-2">
+                    <button 
+                      onClick={() => scrollHandler(topRatingRef, 'left')}
+                      className="w-8 h-8 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-full text-white transition-all active:scale-90 border border-white/5"
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    <button 
+                      onClick={() => scrollHandler(topRatingRef, 'right')}
+                      className="w-8 h-8 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-full text-white transition-all active:scale-90 border border-white/5"
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                  <button onClick={() => { setActiveTab('anime'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-[10px] font-black text-slate-500 hover:text-red-400 uppercase tracking-widest transition-colors flex items-center gap-2 group">
+                    {t('seeAll' as any)}
+                    <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
+                  </button>
+                </div>
               </div>
               
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+              <div ref={topRatingRef} className="flex gap-6 overflow-x-auto no-scrollbar pb-4 -mx-4 px-4 scroll-smooth">
                 {animeList.sort((a,b) => b.rating - a.rating).slice(0, 5).map((anime, i) => (
                   <div 
                     key={`top-${anime.id}`}
@@ -1210,8 +1363,9 @@ export default function AnimePortal({
           )}
 
         </div>
+      </div>
 
-      </div>      <AnimatePresence>
+      <AnimatePresence>
         {selectedAnime && (
            <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
@@ -1288,12 +1442,42 @@ export default function AnimePortal({
                                 onClick={(e) => handleWatchlist(e, selectedAnime.id)}
                                 className={cn(
                                     "flex items-center justify-center gap-3 py-3.5 bg-white/5 hover:bg-white/10 text-white font-bold rounded-xl transition-colors text-sm",
-                                    watchlist.has(selectedAnime.id) && "text-red-500"
+                                    watchlist.has(selectedAnime.id) && "text-red-500 bg-red-600/10 border-red-500/30"
                                 )}
                             >
                                 <Heart size={18} className={cn(watchlist.has(selectedAnime.id) && "fill-current text-red-500")} />
-                                Saqlash
+                                {watchlist.has(selectedAnime.id) ? "Saqlangan" : "Saqlash"}
                             </button>
+                        </div>
+
+                        {/* Rating Component */}
+                        <div className="flex flex-col gap-4 py-4 border-y border-white/5">
+                            <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Anime reytingi</span>
+                                <div className="flex items-center gap-1.5">
+                                    <Star size={14} fill="#f59e0b" className="text-amber-500" />
+                                    <span className="text-lg font-black">{selectedAnime.rating || '0.0'}</span>
+                                    <span className="text-[10px] text-slate-500 font-bold ml-1">({selectedAnime.ratingsCount || 0})</span>
+                                </div>
+                            </div>
+                            
+                            <div className="flex items-center justify-center gap-2 bg-white/5 p-4 rounded-xl">
+                                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((star) => (
+                                    <button
+                                        key={star}
+                                        onClick={() => handleRateAnime(star)}
+                                        className="transition-all hover:scale-125 focus:scale-110"
+                                    >
+                                        <Star 
+                                            size={18} 
+                                            className={cn(
+                                                "transition-colors",
+                                                (userRating && star <= userRating) ? "text-amber-500 fill-amber-500" : "text-slate-600 hover:text-amber-400"
+                                            )} 
+                                        />
+                                    </button>
+                                ))}
+                            </div>
                         </div>
 
                         {/* Episodes selection in details view */}
@@ -1474,6 +1658,46 @@ export default function AnimePortal({
                              )}
                           </div>
                     </section>
+
+                    {/* Related Anime Section */}
+                    {relatedAnimes.length > 0 && (
+                      <section className="mt-16 pt-12 border-t border-white/5 pb-12">
+                        <h3 className="text-2xl font-black uppercase tracking-tighter mb-8 flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-1.5 h-6 bg-red-600 rounded-full" />
+                            O'xshash animelar
+                          </div>
+                          <span className="text-[10px] font-black tracking-[0.2em] text-slate-500 uppercase">Sizga yoqishi mumkin</span>
+                        </h3>
+                        
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                          {relatedAnimes.map((anime) => (
+                            <motion.div
+                              key={anime.id}
+                              whileHover={{ y: -5 }}
+                              onClick={() => {
+                                setSelectedAnime(anime);
+                                setModalMode('details');
+                              }}
+                              className="group cursor-pointer"
+                            >
+                              <div className="relative aspect-[4/5] rounded-xl overflow-hidden border border-white/5 mb-2 shadow-2xl">
+                                <img src={anime.posterUrl} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" referrerPolicy="no-referrer" />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                                <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0">
+                                  <div className="flex items-center gap-1 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded text-[8px] font-bold text-white">
+                                    <Star size={8} fill="currentColor" /> {anime.rating}
+                                  </div>
+                                </div>
+                              </div>
+                              <h4 className="text-[10px] font-black uppercase tracking-tight text-slate-300 group-hover:text-white transition-colors truncate">
+                                {anime.title}
+                              </h4>
+                            </motion.div>
+                          ))}
+                        </div>
+                      </section>
+                    )}
                   </motion.div>
                 ) : (
                   <motion.div

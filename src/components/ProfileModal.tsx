@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Upload, Check, Loader2, User, LogOut } from 'lucide-react';
 import { db, auth, logout } from '../firebase';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { cn } from '../lib/utils';
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { useTranslation, Language } from '../i18n';
+import { Star, MessageSquare, Bookmark, Zap } from 'lucide-react';
 
 interface ProfileModalProps {
   onClose: () => void;
@@ -31,6 +32,7 @@ export default function ProfileModal({ onClose, isOpen, language = 'uz' }: Profi
 
   const [saving, setSaving] = useState(false);
   const [customPreview, setCustomPreview] = useState<string | null>(null);
+  const [stats, setStats] = useState({ watchlist: 0, comments: 0, level: 1 });
 
   useEffect(() => {
     async function loadProfile() {
@@ -42,6 +44,20 @@ export default function ProfileModal({ onClose, isOpen, language = 'uz' }: Profi
             setUsername(data.username || user.displayName || '');
             setAvatarUrl(data.photoURL || '');
           }
+
+          // Load Stats
+          const watchlistSnap = await getDocs(query(collection(db, 'watchlist'), where('userId', '==', user.uid)));
+          const commentsSnap = await getDocs(query(collection(db, 'comments'), where('userId', '==', user.uid)));
+          
+          const watchlistCount = watchlistSnap.size;
+          const commentsCount = commentsSnap.size;
+          const level = Math.floor((commentsCount * 5 + watchlistCount * 2) / 10) + 1;
+
+          setStats({
+            watchlist: watchlistCount,
+            comments: commentsCount,
+            level
+          });
         }
       } catch (err) {
         console.error('Error loading profile:', err);
@@ -150,6 +166,30 @@ export default function ProfileModal({ onClose, isOpen, language = 'uz' }: Profi
              </div>
            ) : (
              <div className="space-y-8">
+               {/* Stats Overview */}
+               <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4 flex flex-col items-center justify-center gap-1 group hover:bg-red-500/5 transition-colors">
+                     <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 group-hover:text-red-400 transition-colors">Daraja</span>
+                     <div className="flex items-center gap-1 text-red-500">
+                        <Zap size={14} fill="currentColor" />
+                        <span className="text-xl font-black">{stats.level}</span>
+                     </div>
+                  </div>
+                  <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4 flex flex-col items-center justify-center gap-1 group hover:bg-amber-500/5 transition-colors">
+                     <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 group-hover:text-amber-400 transition-colors">Sizdagi</span>
+                     <div className="flex items-center gap-1 text-amber-500">
+                        <Bookmark size={14} fill="currentColor" />
+                        <span className="text-xl font-black">{stats.watchlist}</span>
+                     </div>
+                  </div>
+                  <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4 flex flex-col items-center justify-center gap-1 group hover:bg-indigo-500/5 transition-colors">
+                     <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 group-hover:text-indigo-400 transition-colors">Izohlar</span>
+                     <div className="flex items-center gap-1 text-indigo-500">
+                        <MessageSquare size={14} fill="currentColor" />
+                        <span className="text-xl font-black">{stats.comments}</span>
+                     </div>
+                  </div>
+               </div>
                {/* Username input */}
                <div className="space-y-4 pt-2">
                   <div className="space-y-2">
