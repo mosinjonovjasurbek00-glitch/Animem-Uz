@@ -221,7 +221,7 @@ export default function Chat() {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-120px)] sm:h-[calc(100vh-140px)] max-w-4xl mx-auto bg-[#050505] border border-white/5 rounded-2xl sm:rounded-[2.5rem] overflow-hidden shadow-[0_32px_64px_-12px_rgba(0,0,0,0.8)] relative">
+    <div className="flex flex-col h-[calc(100dvh-120px)] sm:h-[calc(100vh-140px)] max-w-4xl mx-auto bg-[#0B0B14] border border-white/5 rounded-2xl sm:rounded-[2.5rem] overflow-hidden shadow-[0_32px_64px_-12px_rgba(0,0,0,0.8)] relative">
       <Helmet>
         <title>Chat - Animem.uz</title>
         <meta name="description" content="Animem.uz hamjamiyati bilan jonli muloqot." />

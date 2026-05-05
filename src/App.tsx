@@ -200,14 +200,14 @@ function AppContent({
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
+      <div className="min-h-screen bg-[#0B0B14] flex items-center justify-center">
         <div className="w-12 h-12 border-4 border-red-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#000000] selection:bg-red-500/30 font-sans overflow-x-hidden">
+    <div className="min-h-screen bg-[#0B0B14] selection:bg-red-500/30 font-sans overflow-x-hidden">
       <Helmet>
         <meta property="og:type" content="website" />
         <meta property="og:site_name" content="Animem Uz" />
@@ -364,7 +364,7 @@ function AppContent({
         </Routes>
       </main>
 
-      <footer className="py-24 px-4 lg:px-8 border-t border-white/5 bg-[#050505] backdrop-blur-2xl relative z-10">
+      <footer className="py-24 px-4 lg:px-8 border-t border-white/5 bg-[#0B0B14] backdrop-blur-2xl relative z-10">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-12">
           <div className="flex flex-col gap-6 text-center md:text-left">
             <div className="flex items-center justify-center md:justify-start gap-4">

@@ -3,7 +3,7 @@
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --bg-deep: #050505;
+  --bg-deep: #0B0B14;
   --accent: #ef4444;
   --accent-rgb: 239, 68, 68;
 }
@@ -16,7 +16,7 @@
 
 @layer components {
   .glass {
-    @apply bg-[#0A0A0A]/80 backdrop-blur-xl border border-white/5;
+    @apply bg-[#12121F]/80 backdrop-blur-xl border border-white/5;
   }
   
   .glass-card {

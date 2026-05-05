@@ -29,7 +29,7 @@ export default function BottomNav({ activeTab, setActiveTab }: BottomNavProps) {
   return (
     <div className="fixed bottom-0 left-0 right-0 z-[999] lg:hidden pb-[safe-area-inset-bottom]">
       {/* Background with blur */}
-      <div className="absolute inset-0 bg-[#050505]/95 backdrop-blur-3xl border-t border-white/[0.08]" />
+      <div className="absolute inset-0 bg-[#0B0B14]/95 backdrop-blur-3xl border-t border-white/[0.08]" />
       
       {/* Glow Effect */}
       <div className="absolute inset-x-0 -top-px h-px bg-gradient-to-r from-transparent via-red-500/50 to-transparent" />

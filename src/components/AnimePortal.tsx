@@ -865,7 +865,7 @@ export default function AnimePortal({
                       className="w-full h-full object-cover object-top sm:object-center" 
                       referrerPolicy="no-referrer"
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t sm:bg-gradient-to-r from-[#050505] via-[#050505]/80 sm:from-black sm:via-black/80 to-transparent" />
+                    <div className="absolute inset-0 bg-gradient-to-t sm:bg-gradient-to-r from-[#0B0B14] via-[#0B0B14]/80 sm:from-black sm:via-black/80 to-transparent" />
                     
                     <div className="absolute inset-0 flex flex-col md:flex-row md:items-center justify-end md:justify-between p-4 sm:p-12 md:p-16">
                          <div className="flex-1 max-w-2xl w-full flex flex-col justify-end md:justify-center h-full md:h-auto">
@@ -1217,7 +1217,7 @@ export default function AnimePortal({
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.9, opacity: 0 }}
-            className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md"
+            className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-[#0B0B14]/90 backdrop-blur-md"
           >
             <div 
               className="absolute inset-0 z-0" 
@@ -1225,11 +1225,11 @@ export default function AnimePortal({
             />
             
             <div
-              className="relative z-10 w-full h-full bg-[#0A0A0A] overflow-hidden border border-white/10 shadow-2xl flex flex-col"
+              className="relative z-10 w-full h-full bg-[#12121F] overflow-hidden border border-white/10 shadow-2xl flex flex-col"
             >
               <button 
                 onClick={handleCloseAnime} 
-                className="absolute top-4 right-4 z-[999] p-2 bg-black/60 hover:bg-black/90 text-white rounded-full transition-all border border-white/20 active:scale-90"
+                className="absolute top-4 right-4 z-[999] p-2 bg-[#12121F]/60 hover:bg-[#12121F]/90 text-white rounded-full transition-all border border-white/20 active:scale-90"
               >
                 <XCircle size={24} className="sm:w-7 sm:h-7" />
               </button>
@@ -1369,7 +1369,7 @@ export default function AnimePortal({
                                           initial={{ opacity: 0, y: 10, scale: 0.95 }}
                                           animate={{ opacity: 1, y: 0, scale: 1 }}
                                           exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                                          className="absolute bottom-full left-0 mb-4 p-4 bg-[#0A0A0A]/95 backdrop-blur-3xl border border-white/10 rounded-[2.5rem] shadow-2xl z-50 w-72 sm:w-80"
+                                          className="absolute bottom-full left-0 mb-4 p-4 bg-[#12121F]/95 backdrop-blur-3xl border border-white/10 rounded-[2.5rem] shadow-2xl z-50 w-72 sm:w-80"
                                         >
                                           <div className="flex items-center justify-between mb-4 px-2">
                                             <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Emoji tanlang</span>
@@ -1481,7 +1481,7 @@ export default function AnimePortal({
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.95 }}
-                    className="flex-1 flex flex-col overflow-hidden relative bg-black min-h-0"
+                    className="flex-1 flex flex-col overflow-hidden relative bg-[#0B0B14] min-h-0"
                   >
                     {/* Player UI Overlay */}
                     <div className="absolute top-0 left-0 right-0 z-[300] p-3 sm:p-8 flex flex-col items-start bg-gradient-to-b from-black/95 via-black/80 to-transparent pointer-events-none">
@@ -1525,12 +1525,12 @@ export default function AnimePortal({
                        </div>
                     </div>
 
-                    <div className="flex-1 flex flex-col overflow-y-auto custom-scrollbar relative min-h-0 bg-[#0A0A0A]">
+                    <div className="flex-1 flex flex-col overflow-y-auto custom-scrollbar relative min-h-0 bg-[#12121F]">
                        {/* Video Area - Now Full Width */}
                        <div className="w-full relative group bg-black shrink-0 aspect-video max-h-[75vh]">
                           {/* Video Loading State */}
                           {currentEpisode && videoLoading && (
-                            <div className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-[#050505] transition-opacity">
+                            <div className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-[#0B0B14] transition-opacity">
                                <div className="w-12 h-12 border-4 border-red-500/20 border-t-red-600 rounded-full animate-spin mb-4" />
                                <div className="flex flex-col items-center gap-1">
                                   <h4 className="text-sm font-black uppercase tracking-tighter">Yuklanmoqda...</h4>
@@ -1790,7 +1790,7 @@ export default function AnimePortal({
               
               <h3 className="text-xl font-bold text-white mb-6">Ulashish</h3>
               
-              <div className="bg-[#0A0A0A] border border-white/5 rounded-xl p-4 mb-4 text-sm text-slate-300 font-mono break-all leading-relaxed">
+              <div className="bg-[#12121F] border border-white/5 rounded-xl p-4 mb-4 text-sm text-slate-300 font-mono break-all leading-relaxed">
                 {window.location.origin}{currentEpisode ? `/watch/${slugify(selectedAnime?.title || '')}/${currentEpisode.episodeNumber}` : `/anime/${slugify(selectedAnime?.title || '')}`}
               </div>
               

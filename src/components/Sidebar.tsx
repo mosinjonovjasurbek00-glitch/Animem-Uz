@@ -27,7 +27,7 @@ export default function Sidebar({ activeTab, setActiveTab, isAdmin }: SidebarPro
   };
 
   return (
-    <aside className="fixed left-0 top-0 bottom-0 w-24 bg-[#050505] border-r border-white/5 flex flex-col items-center py-8 z-[110] hidden lg:flex pt-28 will-change-transform">
+    <aside className="fixed left-0 top-0 bottom-0 w-24 bg-[#0B0B14] border-r border-white/5 flex flex-col items-center py-8 z-[110] hidden lg:flex pt-28 will-change-transform">
       <div className="flex flex-col gap-8">
         {menuItems.map((item) => (
           <button
@@ -43,7 +43,7 @@ export default function Sidebar({ activeTab, setActiveTab, isAdmin }: SidebarPro
             <item.icon size={26} strokeWidth={activeTab === item.id ? 2.5 : 2} />
             
             {/* Tooltip */}
-            <div className="absolute left-20 px-4 py-2 bg-black border border-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest text-white whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-all translate-x-[-10px] group-hover:translate-x-0 z-50">
+            <div className="absolute left-20 px-4 py-2 bg-[#12121F] border border-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest text-white whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-all translate-x-[-10px] group-hover:translate-x-0 z-50">
               {item.label}
             </div>
 
@@ -67,7 +67,7 @@ export default function Sidebar({ activeTab, setActiveTab, isAdmin }: SidebarPro
             )}
           >
             <LayoutDashboard size={26} />
-            <div className="absolute left-20 px-4 py-2 bg-black border border-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest text-white whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-all translate-x-[-10px] group-hover:translate-x-0 z-50">
+            <div className="absolute left-20 px-4 py-2 bg-[#12121F] border border-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest text-white whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-all translate-x-[-10px] group-hover:translate-x-0 z-50">
               Admin
             </div>
           </button>
