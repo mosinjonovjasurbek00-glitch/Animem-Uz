@@ -23,6 +23,7 @@ interface AnimeDoc {
   slug?: string;
   createdAt: any;
   language?: Language;
+  isRPlus?: boolean;
 }
 
 interface EpisodeDoc {
@@ -134,6 +135,7 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
   const [year, setYear] = useState(new Date().getFullYear());
   const [contentType, setContentType] = useState<'movie' | 'series'>('series');
   const [isBanner, setIsBanner] = useState(false);
+  const [isRPlus, setIsRPlus] = useState(false);
   const [animeLanguage, setAnimeLanguage] = useState<Language>('uz');
 
   // Episode Form State
@@ -256,11 +258,13 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
       setContentType(editingAnime.type || 'series');
       // @ts-ignore
       setIsBanner(editingAnime.isBanner || false);
+      setIsRPlus(editingAnime.isRPlus || false);
       setAnimeLanguage(editingAnime.language || 'uz');
     } else {
       setTitle(''); setPosterUrl(''); setPosterFile(null); setDescription('');
       setCategory('Action'); setRating(8.5); setYear(new Date().getFullYear());
       setIsBanner(false);
+      setIsRPlus(false);
       setAnimeLanguage('uz');
     }
   }, [editingAnime]);
@@ -340,6 +344,7 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
         type: contentType, 
         authorUid: auth.currentUser?.uid,
         isBanner,
+        isRPlus,
         language: animeLanguage,
         updatedAt: serverTimestamp()
       };
@@ -889,11 +894,23 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3 p-4 glass rounded-2xl cursor-pointer hover:bg-white/5 transition-colors" onClick={() => setIsBanner(!isBanner)}>
-                     <div className={cn("w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all", isBanner ? "bg-red-600 border-red-500 shadow-lg shadow-red-500/30" : "border-white/10")}>
-                        {isBanner && <Check size={14} className="text-white" />}
-                     </div>
-                     <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{t('addToBanner')}</span>
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center gap-3 p-4 glass rounded-2xl cursor-pointer hover:bg-white/5 transition-colors" onClick={() => setIsBanner(!isBanner)}>
+                       <div className={cn("w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all", isBanner ? "bg-red-600 border-red-500 shadow-lg shadow-red-500/30" : "border-white/10")}>
+                          {isBanner && <Check size={14} className="text-white" />}
+                       </div>
+                       <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{t('addToBanner')}</span>
+                    </div>
+
+                    <div className="flex items-center gap-3 p-4 glass rounded-2xl cursor-pointer hover:bg-white/5 transition-colors" onClick={() => setIsRPlus(!isRPlus)}>
+                       <div className={cn("w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all", isRPlus ? "bg-amber-600 border-amber-500 shadow-lg shadow-amber-500/30" : "border-white/10")}>
+                          {isRPlus && <Check size={14} className="text-white" />}
+                       </div>
+                       <div className="flex flex-col">
+                         <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">R+ (18+) Kontent</span>
+                         <span className="text-[8px] font-bold text-slate-600 uppercase tracking-tight">Yosh chegarasini yoqish</span>
+                       </div>
+                    </div>
                   </div>
 
                   {uploadProgress !== null && (

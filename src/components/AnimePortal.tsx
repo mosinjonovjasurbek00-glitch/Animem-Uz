@@ -27,6 +27,7 @@ interface AnimeDoc {
   isBanner?: boolean;
   slug?: string;
   createdAt: any;
+  isRPlus?: boolean;
 }
 
 interface EpisodeDoc {
@@ -481,6 +482,11 @@ export default function AnimePortal({
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [expandedDesc, setExpandedDesc] = useState(false);
   const [userRating, setUserRating] = useState<number | null>(null);
+  const [isAgeVerified, setIsAgeVerified] = useState(() => {
+    return sessionStorage.getItem('is_age_verified_18') === 'true';
+  });
+  const [showAgeVerification, setShowAgeVerification] = useState(false);
+  const [pendingAnimeAction, setPendingAnimeAction] = useState<any>(null);
 
   const [relatedAnimes, setRelatedAnimes] = useState<AnimeDoc[]>([]);
 
@@ -696,8 +702,16 @@ export default function AnimePortal({
     if (urlAnimeSlug) {
       const anime = animeList.find(a => slugify(a.title) === urlAnimeSlug || a.id === urlAnimeSlug);
       if (anime) {
-        setSelectedAnime(anime);
-        setModalMode(location.pathname.includes('/watch/') ? 'player' : 'details');
+        if (anime.isRPlus && !isAgeVerified) {
+          setShowAgeVerification(true);
+          setPendingAnimeAction(() => () => {
+            setSelectedAnime(anime);
+            setModalMode(location.pathname.includes('/watch/') ? 'player' : 'details');
+          });
+        } else {
+          setSelectedAnime(anime);
+          setModalMode(location.pathname.includes('/watch/') ? 'player' : 'details');
+        }
       }
     } else {
         // If no animeId in URL, close modal if it was open
@@ -852,17 +866,26 @@ export default function AnimePortal({
   }, [selectedAnime]);
 
   const handleOpenAnime = (anime: AnimeDoc, mode: 'details' | 'player' = 'details') => {
-    const slug = slugify(anime.title);
-    if (mode === 'details') {
-      navigate(`/anime/${slug}`);
-    } else {
-      // For player, we navigate to the first episode if not already loaded, 
-      // or specific episode logic will handle it.
-      navigate(`/watch/${slug}/1`);
-    }
+    const action = () => {
+      const slug = slugify(anime.title);
+      if (mode === 'details') {
+        navigate(`/anime/${slug}`);
+      } else {
+        // For player, we navigate to the first episode if not already loaded, 
+        // or specific episode logic will handle it.
+        navigate(`/watch/${slug}/1`);
+      }
 
-    if (mode === 'player') {
-      setDoc(doc(db, 'anime', anime.id), { views: increment(1) }, { merge: true });
+      if (mode === 'player') {
+        setDoc(doc(db, 'anime', anime.id), { views: increment(1) }, { merge: true });
+      }
+    };
+
+    if (anime.isRPlus && !isAgeVerified) {
+      setPendingAnimeAction(() => action);
+      setShowAgeVerification(true);
+    } else {
+      action();
     }
   };
 
@@ -1123,6 +1146,12 @@ export default function AnimePortal({
                                <span className="text-[11px] font-black tabular-nums">{anime.rating}</span>
                             </div>
 
+                            {anime.isRPlus && (
+                              <div className="absolute top-4 left-4 z-10 bg-black/60 backdrop-blur-md px-2 py-1 rounded-lg border border-red-500/30">
+                                 <span className="text-[10px] font-black text-red-500 uppercase">R+</span>
+                              </div>
+                            )}
+
                             {/* Hover Overlay */}
                             <div className="absolute inset-0 bg-gradient-to-t from-red-600/60 to-transparent opacity-0 group-hover:opacity-100 transition-all flex flex-col justify-end p-6 duration-500">
                                <div className="flex gap-2">
@@ -1219,6 +1248,11 @@ export default function AnimePortal({
                       alt={anime.title}
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                    {anime.isRPlus && (
+                      <div className="absolute top-4 left-4 z-10 bg-black/60 backdrop-blur-md px-2 py-1 rounded-lg border border-red-500/30">
+                        <span className="text-[10px] font-black text-red-500 uppercase">R+</span>
+                      </div>
+                    )}
                     {anime.rating >= 8.5 && (
                       <div className="absolute top-4 left-4 bg-red-600 px-3 py-1 rounded-lg text-[8px] font-black uppercase text-white shadow-lg">
                         POPULAR
@@ -1272,7 +1306,7 @@ export default function AnimePortal({
                   <div className="text-3xl font-black text-white/10 group-hover:text-red-500/20 italic tabular-nums w-10 shrink-0 text-center">
                     0{i+1}
                   </div>
-                  <div className="w-20 h-full rounded-2xl overflow-hidden border border-white/5 shrink-0 bg-slate-900 will-change-transform">
+                  <div className="w-20 h-full rounded-2xl overflow-hidden border border-white/5 shrink-0 bg-slate-900 will-change-transform relative">
                     <img 
                       src={anime.posterUrl} 
                       className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500 text-[0]" 
@@ -1281,6 +1315,11 @@ export default function AnimePortal({
                       decoding="async"
                       alt={anime.title}
                     />
+                    {anime.isRPlus && (
+                      <div className="absolute top-1 left-1 z-10 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded-md border border-red-500/30">
+                        <span className="text-[8px] font-black text-red-500 uppercase">R+</span>
+                      </div>
+                    )}
                   </div>
                   <div className="min-w-0 pr-2">
                     <h3 className="font-bold text-xs uppercase tracking-tight text-white group-hover:text-red-400 transition-colors line-clamp-2">{anime.title}</h3>
@@ -1336,7 +1375,7 @@ export default function AnimePortal({
                       {i+1}
                     </div>
                     <div className="flex items-center gap-4 relative z-10 w-full">
-                      <div className="w-16 h-20 rounded-xl overflow-hidden shrink-0 border border-white/5 group-hover:border-red-500/50 transition-colors bg-slate-900 will-change-transform">
+                      <div className="w-16 h-20 rounded-xl overflow-hidden shrink-0 border border-white/5 group-hover:border-red-500/50 transition-colors bg-slate-900 will-change-transform relative">
                         <img 
                           src={anime.posterUrl} 
                           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500 text-[0]" 
@@ -1345,6 +1384,11 @@ export default function AnimePortal({
                           decoding="async"
                           alt={anime.title}
                         />
+                        {anime.isRPlus && (
+                          <div className="absolute top-0 left-0 z-10 bg-black/60 backdrop-blur-md px-1 py-0.5 rounded-br-lg border-b border-r border-red-500/30">
+                            <span className="text-[7px] font-black text-red-500 uppercase">R+</span>
+                          </div>
+                        )}
                       </div>
                       <div className="min-w-0 pr-2">
                         <h4 className="font-black text-xs uppercase tracking-tight text-white line-clamp-2 group-hover:text-red-400 transition-colors">{anime.title}</h4>
@@ -1984,6 +2028,57 @@ export default function AnimePortal({
                 )}
               </AnimatePresence>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Age Verification Modal */}
+      <AnimatePresence>
+        {showAgeVerification && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/95 backdrop-blur-xl"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="glass max-w-sm w-full p-8 rounded-[2.5rem] border border-white/10 text-center shadow-[0_30px_100px_rgba(220,38,38,0.2)]"
+            >
+              <div className="w-20 h-20 bg-red-600/20 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-red-500/30">
+                <span className="text-3xl font-black text-red-500">18+</span>
+              </div>
+              <h2 className="text-2xl font-black uppercase tracking-tighter mb-4">DIQQAT: R+ KONTENT</h2>
+              <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest leading-relaxed mb-8">
+                Siz ko'rmoqchi bo'lgan animeda kattalarga mos sahnalar bo'lishi mumkin. Davom etish uchun 18 yoshdan katta ekanligingizni tasdiqlang.
+              </p>
+              <div className="flex flex-col gap-3">
+                <button 
+                  onClick={() => {
+                    setIsAgeVerified(true);
+                    sessionStorage.setItem('is_age_verified_18', 'true');
+                    setShowAgeVerification(false);
+                    if (pendingAnimeAction) pendingAnimeAction();
+                    setPendingAnimeAction(null);
+                  }}
+                  className="w-full py-4 bg-red-600 hover:bg-red-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-xl shadow-red-600/40"
+                >
+                  Ha, tan olaman va davom etaman
+                </button>
+                <button 
+                  onClick={() => {
+                    setShowAgeVerification(false);
+                    setPendingAnimeAction(null);
+                    navigate('/');
+                  }}
+                  className="w-full py-4 glass text-slate-400 hover:text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all"
+                >
+                  Yo'q, ortga qaytish
+                </button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

@@ -76,7 +76,7 @@ export default function NotificationSystem({ language = 'uz' }: NotificationSyst
           exit={{ opacity: 0, scale: 0.9, x: 20 }}
           className="fixed bottom-6 right-6 z-[999] w-[320px] sm:w-[380px]"
         >
-          <div className="glass overflow-hidden rounded-[2rem] shadow-[0_20px_100px_rgba(0,0,0,0.8)] border border-white/10 flex flex-col relative">
+          <div className="bg-[#0B0B14] overflow-hidden rounded-[2rem] shadow-[0_30px_120px_rgba(0,0,0,1)] border border-white/10 flex flex-col relative backdrop-blur-2xl">
             {/* Progress Bar */}
             <motion.div 
               initial={{ width: "100%" }}
@@ -113,7 +113,7 @@ export default function NotificationSystem({ language = 'uz' }: NotificationSyst
                   {lastNotification.title}
                 </h4>
                 
-                <p className="text-slate-400 text-[10px] font-medium leading-relaxed line-clamp-2">
+                <p className="text-slate-200 text-[10px] font-medium leading-relaxed line-clamp-2 text-shadow-sm">
                   {lastNotification.message}
                 </p>
 
