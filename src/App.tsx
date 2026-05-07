@@ -402,7 +402,7 @@ function AppContent({
           <div className="flex flex-col items-center md:items-end gap-6">
             <div className="flex items-center gap-4">
               <a 
-                href="https://t.me/animem_uz1" 
+                href="https://t.me/animemuz1" 
                 target="_blank" 
                 rel="noopener noreferrer" 
                 className="w-12 h-12 flex items-center justify-center bg-white/5 rounded-full hover:bg-white/10 transition-all border border-white/5 group"

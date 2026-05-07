@@ -53,7 +53,7 @@ export const TelegramBanner = () => {
                 </p>
                 
                 <a
-                  href="https://t.me/animem_uz1"
+                  href="https://t.me/animemuz1"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="block w-full py-3 bg-[#FF8C00] hover:bg-[#FF7F00] text-black font-black text-center text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-[#FF8C00]/20 active:scale-95"
