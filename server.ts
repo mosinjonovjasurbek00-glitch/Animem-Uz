@@ -8,7 +8,6 @@ import { fileURLToPath } from "url";
 import fs from "fs";
 import crypto from "crypto";
 import axios from "axios";
-import { Resend } from "resend";
 import admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
@@ -22,8 +21,6 @@ import { slugify } from "./src/lib/slugs.js";
 // This must be set before any firebase-admin modules are imported.
 process.env.GOOGLE_CLOUD_PROJECT = firebaseConfig.projectId;
 process.env.GCLOUD_PROJECT = firebaseConfig.projectId;
-
-const resend = new Resend(process.env.RESEND_API_KEY || "re_12JeyV4W_86o1wrUPcGEYbuP8eVU7imvt");
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -167,7 +164,7 @@ async function setupServer() {
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
-  
+
   // Katta videolarni serverdan parchalab uzatish yo'li
   app.get("/api/telegram/stream", async (req, res) => {
     await tgStreamer.handleStream(req, res);
@@ -555,6 +552,33 @@ async function setupServer() {
   });
 
   // Broadcast notification endpoint
+  app.post("/api/admin/bump-views", async (req, res) => {
+    try {
+      const db = getDbAdmin();
+      const animeRef = db.collection('anime');
+      const snapshot = await animeRef.get();
+      
+      if (snapshot.empty) {
+        return res.json({ success: false, message: 'No matching documents.' });
+      }
+
+      const batch = db.batch();
+      let updatedCount = 0;
+
+      snapshot.forEach(doc => {
+        const views = Math.floor(Math.random() * (350000 - 108256 + 1)) + 108256;
+        batch.update(doc.ref, { views });
+        updatedCount++;
+      });
+
+      await batch.commit();
+      res.json({ success: true, updatedCount });
+    } catch (error: any) {
+      console.error("Bump views err:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.post("/api/admin/broadcast-notification", async (req, res) => {
     const { title, body, imageUrl, animeId } = req.body;
     

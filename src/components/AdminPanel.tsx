@@ -571,6 +571,26 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
     });
   };
 
+  const handleBumpViews = async () => {
+    setSubmitting(true);
+    setSuccess(false);
+    setError(null);
+    try {
+      const snap = await getDocs(query(collection(db, 'anime')));
+      for (const animeDoc of snap.docs) {
+        const views = Math.floor(Math.random() * (350000 - 108256 + 1)) + 108256;
+        await updateDoc(doc(db, 'anime', animeDoc.id), { views });
+      }
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 3000);
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleAddAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userSearch) return;
@@ -823,9 +843,20 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
           <div className="w-12 h-12 rounded-full bg-blue-600/20 flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform">
             <TrendingUp size={24} />
           </div>
-          <span className="text-3xl font-black tabular-nums">{animeList.reduce((acc, a) => acc + (a.views || 0), 0)}</span>
+          <span className="text-3xl font-black tabular-nums">{animeList.reduce((acc, a) => acc + (a.views || 0), 0).toLocaleString()}</span>
           <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Jami Ko'rishlar</span>
         </div>
+      </div>
+
+      <div className="flex justify-end mb-6">
+        <button
+          onClick={handleBumpViews}
+          disabled={submitting}
+          className="bg-indigo-600 outline-none text-white px-6 py-3 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-indigo-500 transition-all flex items-center justify-center gap-2 group shadow-xl shadow-indigo-600/20"
+        >
+          {submitting ? <Loader2 size={16} className="animate-spin" /> : <TrendingUp size={16} />}
+          Barcha Ko'rishlarni Ko'tarish
+        </button>
       </div>
 
       <AnimatePresence mode="wait">
@@ -939,7 +970,7 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
                           <span className={cn("px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest", anime.language === 'ru' ? "bg-red-500/20 text-red-400" : "bg-red-500/10 text-red-300")}>{anime.language === 'ru' ? 'RU' : 'UZ'}</span>
                           <h3 className="font-black text-sm uppercase truncate text-white">{anime.title}</h3>
                         </div>
-                        <p className="text-[10px] text-slate-500 uppercase font-black">{anime.category} • {anime.year} • {anime.views || 0} {t('views')}</p>
+                        <p className="text-[10px] text-slate-500 uppercase font-black">{anime.category} • {anime.year} • {(anime.views || 0).toLocaleString()} {t('views')}</p>
                         <div className="flex gap-2 mt-2">
                           <button 
                             onClick={() => { setSelectedAnimeForEpisodes(anime); setActiveTab('episodes'); }}

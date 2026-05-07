@@ -8,6 +8,7 @@ import { useAuthState } from 'react-firebase-hooks/auth';
 import { collection, query, orderBy, onSnapshot, doc, getDoc, setDoc, deleteDoc, writeBatch, serverTimestamp, where, increment, getDocs, addDoc, limit, updateDoc } from 'firebase/firestore';
 import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, Monitor, Settings, Star, Calendar, Clock, Search, Eye, X as CloseIcon, Loader2, Heart, Film, Sparkles, ChevronRight, ChevronLeft, Activity, TrendingUp, Check, ArrowLeft, MessageSquare, Send, User, Trash2, Filter, ChevronDown, RotateCcw, XCircle, Share2, Copy, Home, LayoutGrid, Bookmark, LogOut, Plus, Smile, SkipBack, SkipForward } from 'lucide-react';
 import { ShareModal } from './ShareModal';
+import AdBanner from './AdBanner';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { CATEGORIES, categoryKeys } from '../constants';
@@ -1180,7 +1181,7 @@ export default function AnimePortal({
                                <div className="w-1 h-1 bg-slate-700 rounded-full" />
                                <div className="flex items-center gap-1 text-[10px] font-bold text-slate-500">
                                   <Eye size={10} />
-                                  <span>{anime.views || 0}</span>
+                                  <span>{(anime.views || 0).toLocaleString()}</span>
                                </div>
                             </div>
                          </div>
@@ -1316,6 +1317,8 @@ export default function AnimePortal({
             </div>
           </div>
           )}
+
+          <AdBanner />
 
           {/* Rail: Popular This Week */}
           {(activeTab === 'gallery' && !searchTerm && !showWatchlistOnly) && (
@@ -1455,6 +1458,8 @@ export default function AnimePortal({
               </div>
             </div>
           )}
+
+          <AdBanner />
 
         </div>
       </div>
@@ -2003,6 +2008,8 @@ export default function AnimePortal({
                             </AnimatePresence>
                           </div>
                        </div>
+                       
+                       <AdBanner />
 
                        {/* Episode Selector - Now Below Player and Compact */}
                         <div className="w-full p-6 sm:p-10 space-y-8">
