@@ -16,8 +16,6 @@ interface NavbarProps {
   isAdmin: boolean;
   view: 'gallery' | 'admin';
   setView: (view: 'gallery' | 'admin') => void;
-  selectedCategory: string;
-  setSelectedCategory: (category: string) => void;
   imageCount: number;
   onLoginClick: () => void;
   language: Language;
@@ -28,7 +26,7 @@ interface NavbarProps {
   setActiveTab: (tab: string) => void;
 }
 
-export default function Navbar({ isAdmin, view, setView, selectedCategory, setSelectedCategory, imageCount, onLoginClick, language, setLanguage, searchTerm, setSearchTerm, activeTab, setActiveTab }: NavbarProps) {
+export default function Navbar({ isAdmin, view, setView, imageCount, onLoginClick, language, setLanguage, searchTerm, setSearchTerm, activeTab, setActiveTab }: NavbarProps) {
   const [user] = useAuthState(auth);
   const navigate = useNavigate();
   const location = useLocation();
@@ -126,7 +124,6 @@ export default function Navbar({ isAdmin, view, setView, selectedCategory, setSe
             setActiveTab('gallery');
             window.scrollTo({ top: 0, behavior: 'smooth' });
             setSearchTerm('');
-            setSelectedCategory('All');
           }}
         >
           <div className="relative">

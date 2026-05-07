@@ -122,7 +122,7 @@ export default function NotificationMenu({ language = 'uz' }: NotificationMenuPr
               exit={{ opacity: 0, y: 10, scale: 0.95 }}
               className="fixed left-4 right-4 top-20 sm:absolute sm:inset-x-auto sm:top-full sm:mt-4 sm:right-0 sm:w-[380px] z-[120]"
             >
-              <div className="bg-[#0B0B12] border border-white/10 rounded-[2.5rem] shadow-[0_20px_100px_rgba(0,0,0,0.9)] overflow-hidden flex flex-col max-h-[500px] backdrop-blur-2xl">
+              <div className="bg-black border border-white/20 rounded-[2.5rem] shadow-[0_20px_100px_rgba(0,0,0,1)] overflow-hidden flex flex-col max-h-[500px] backdrop-blur-3xl">
                 <div className="p-6 border-b border-white/5 flex items-center justify-between bg-white/[0.04]">
                   <h3 className="text-white font-black text-sm uppercase tracking-tighter">{t('notifications')}</h3>
                   <span className="text-[10px] font-black text-red-400 px-3 py-1 bg-red-500/10 rounded-full">{notifications.length} {t('msgCount')}</span>

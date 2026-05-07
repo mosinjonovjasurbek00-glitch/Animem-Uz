@@ -53,7 +53,6 @@ export default function App() {
     });
   }, []);
 
-  const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchTerm, setSearchTerm] = useState('');
   
   const [animeList, setAnimeList] = useState<any[]>([]);
@@ -98,8 +97,6 @@ export default function App() {
           setShowContact={setShowContact}
           showAuthModal={showAuthModal}
           setShowAuthModal={setShowAuthModal}
-          selectedCategory={selectedCategory}
-          setSelectedCategory={setSelectedCategory}
           searchTerm={searchTerm}
           setSearchTerm={setSearchTerm}
           animeList={animeList}
@@ -120,7 +117,7 @@ export default function App() {
 function AppContent({ 
   language, setLanguage, user, loading, initialLoading, firestoreAdmin, setFirestoreAdmin, 
   activeTab, setActiveTab, view, setView, showContact, setShowContact, 
-  showAuthModal, setShowAuthModal, selectedCategory, setSelectedCategory, 
+  showAuthModal, setShowAuthModal,
   searchTerm, setSearchTerm, animeList, setAnimeList, dataLoading, 
   setDataLoading, roleLoading, setRoleLoading, fetchError, setFetchError, isAdmin 
 }: any) {
@@ -226,19 +223,21 @@ function AppContent({
 
   return (
     <div className="min-h-screen bg-[#0B0B14] selection:bg-red-500/30 font-sans overflow-x-hidden">
+      <FallingLeaves />
       <Helmet>
         <meta property="og:type" content="website" />
         <meta property="og:site_name" content="Animem Uz" />
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
+        <meta name="theme-color" content="#0B0B14" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="format-detection" content="telephone=no" />
       </Helmet>
       <TelegramBanner />
       <Navbar 
         isAdmin={isAdmin} 
         view={view} 
         setView={setView} 
-        selectedCategory={selectedCategory}
-        setSelectedCategory={setSelectedCategory}
         imageCount={filteredAnimeListByLang.length}
         onLoginClick={() => setShowAuthModal(true)}
         language={language}
@@ -273,8 +272,6 @@ function AppContent({
         <Routes>
           <Route path="/" element={
             <AnimePortal 
-              selectedCategory={selectedCategory}
-              setSelectedCategory={setSelectedCategory}
               animeList={filteredAnimeListByLang}
               loading={dataLoading}
               language={language}
@@ -288,8 +285,6 @@ function AppContent({
           } />
           <Route path="/news" element={
             <AnimePortal 
-              selectedCategory={selectedCategory}
-              setSelectedCategory={setSelectedCategory}
               animeList={filteredAnimeListByLang}
               loading={dataLoading}
               language={language}
@@ -303,8 +298,6 @@ function AppContent({
           } />
           <Route path="/watchlist" element={
             <AnimePortal 
-              selectedCategory={selectedCategory}
-              setSelectedCategory={setSelectedCategory}
               animeList={filteredAnimeListByLang}
               loading={dataLoading}
               language={language}
@@ -323,8 +316,6 @@ function AppContent({
           } />
           <Route path="/anime/:animeSlug" element={
             <AnimePortal 
-              selectedCategory={selectedCategory}
-              setSelectedCategory={setSelectedCategory}
               animeList={filteredAnimeListByLang}
               loading={dataLoading}
               language={language}
@@ -338,23 +329,6 @@ function AppContent({
           } />
           <Route path="/watch/:animeSlug/:episodeNumber" element={
             <AnimePortal 
-              selectedCategory={selectedCategory}
-              setSelectedCategory={setSelectedCategory}
-              animeList={filteredAnimeListByLang}
-              loading={dataLoading}
-              language={language}
-              showWatchlistOnly={false}
-              activeTab="gallery"
-              setActiveTab={setActiveTab}
-              searchTerm={searchTerm}
-              setSearchTerm={setSearchTerm}
-              onAuthRequired={() => setShowAuthModal(true)}
-            />
-          } />
-          <Route path="/category/:categoryName" element={
-            <AnimePortal 
-              selectedCategory={selectedCategory}
-              setSelectedCategory={setSelectedCategory}
               animeList={filteredAnimeListByLang}
               loading={dataLoading}
               language={language}

@@ -76,7 +76,7 @@ export default function NotificationSystem({ language = 'uz' }: NotificationSyst
           exit={{ opacity: 0, scale: 0.9, x: 20 }}
           className="fixed bottom-6 right-6 z-[999] w-[320px] sm:w-[380px]"
         >
-          <div className="bg-[#0B0B14] overflow-hidden rounded-[2rem] shadow-[0_30px_120px_rgba(0,0,0,1)] border border-white/10 flex flex-col relative backdrop-blur-2xl">
+          <div className="bg-black/95 overflow-hidden rounded-[2rem] shadow-[0_30px_120px_rgba(0,0,0,1)] border border-white/20 flex flex-col relative backdrop-blur-3xl">
             {/* Progress Bar */}
             <motion.div 
               initial={{ width: "100%" }}

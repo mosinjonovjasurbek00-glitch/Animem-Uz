@@ -376,7 +376,7 @@ async function setupServer() {
     const baseUrl = `${protocol}://${host}`;
     
     res.type("text/plain");
-    res.send(`User-agent: *\nAllow: /\nDisallow: /admin\n\nSitemap: ${baseUrl}/sitemap.xml`);
+    res.send(`User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /api\n\nSitemap: ${baseUrl}/sitemap.xml\nHost: ${baseUrl}`);
   });
 
   // Dynamic Sitemap Generation
@@ -619,6 +619,7 @@ async function setupServer() {
     let description = "Animem Uz - Sevimli animelaringizni o'zbek va rus tillarida, HD sifatda onlayn tomosha qiling. Eng so'nggi anime seriallar va filmlar.";
     let image = "https://i.pinimg.com/736x/17/c6/88/17c688c6242fe4c3293be182924e73a3.jpg";
     let url = `https://animem.uz${path}`;
+    let keywords = "anime o'zbek tilida, animem, animem uz, animem.uz, anime online, anime uz, uzbek anime, vatan anime, anime ko'rish, o'zbekcha dublyaj, anime seriallar, anime filmlar, yangi animelar";
 
     // Regex for /anime/:slug or /watch/:slug/:ep
     const animeMatch = path.match(/^\/(anime|watch)\/([^\/]+)/);
@@ -633,9 +634,10 @@ async function setupServer() {
           .find(a => slugify(a.title) === slug || a.id === slug);
 
         if (anime) {
-          title = `${anime.title} - Animem Uz`;
+          title = `${anime.title} - O'zbek tilida sifatli anime tomosha qiling - Animem Uz`;
           description = (anime.description || "").substring(0, 160);
           image = anime.posterUrl || image;
+          keywords = `${anime.title}, ${anime.title} o\'zbek tilida, ${anime.title} online ko\'rish, ${anime.category}, anime o\'zbekcha, animem, animem uz`;
         }
       } catch (e) {
         console.error("SEO injection data fetch error:", e);
@@ -646,6 +648,7 @@ async function setupServer() {
       .replace(/<title>.*?<\/title>/, `<title>${title}</title>`)
       .replace(/<meta name="title" content=".*?" \/>/, `<meta name="title" content="${title}" />`)
       .replace(/<meta name="description" content=".*?" \/>/, `<meta name="description" content="${description}" />`)
+      .replace(/<meta name="keywords" content=".*?" \/>/, `<meta name="keywords" content="${keywords}" />`)
       .replace(/<meta property="og:title" content=".*?" \/>/g, `<meta property="og:title" content="${title}" />`)
       .replace(/<meta property="og:description" content=".*?" \/>/g, `<meta property="og:description" content="${description}" />`)
       .replace(/<meta property="og:image" content=".*?" \/>/g, `<meta property="og:image" content="${image}" />`)

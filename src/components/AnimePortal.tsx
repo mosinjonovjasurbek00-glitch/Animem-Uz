@@ -278,6 +278,11 @@ const UniversalVideoPlayer = ({ src, videoRef, videoLoading, setVideoLoading, se
         onLoadedData={() => setVideoLoading(false)}
         onWaiting={() => setVideoLoading(true)}
         onPlaying={() => setVideoLoading(false)}
+        onEnded={() => {
+          if (onNext && hasNext) {
+            onNext();
+          }
+        }}
         onClick={() => {
           if (videoRef.current) {
             if (videoRef.current.paused) {
@@ -423,8 +428,6 @@ const UniversalVideoPlayer = ({ src, videoRef, videoLoading, setVideoLoading, se
 import { Language, useTranslation } from '../i18n';
 
 interface AnimePortalProps {
-  selectedCategory: string;
-  setSelectedCategory: (category: string) => void;
   animeList: AnimeDoc[];
   loading: boolean;
   language: Language;
@@ -445,8 +448,6 @@ const EMOJIS = [
 ];
 
 export default function AnimePortal({ 
-  selectedCategory, 
-  setSelectedCategory, 
   animeList, 
   loading, 
   language,
@@ -458,7 +459,7 @@ export default function AnimePortal({
   onAuthRequired
 }: AnimePortalProps) {
   const navigate = useNavigate();
-  const { animeSlug: urlAnimeSlug, episodeNumber: urlEpisodeNumber, categoryName: urlCategoryName } = useParams();
+  const { animeSlug: urlAnimeSlug, episodeNumber: urlEpisodeNumber } = useParams();
   const location = useLocation();
 
   const t = useTranslation(language);
@@ -488,11 +489,15 @@ export default function AnimePortal({
   const [showAgeVerification, setShowAgeVerification] = useState(false);
   const [pendingAnimeAction, setPendingAnimeAction] = useState<any>(null);
 
+  const [episodePage, setEpisodePage] = useState(0);
+  const EPISODES_PER_PAGE = 30;
+
   const [relatedAnimes, setRelatedAnimes] = useState<AnimeDoc[]>([]);
 
   // Update related animes when selection changes
   useEffect(() => {
     if (selectedAnime) {
+      setEpisodePage(0);
       const related = animeList
         .filter(a => a.id !== selectedAnime.id && (a.category === selectedAnime.category || a.genres?.some(g => selectedAnime.genres?.includes(g))))
         .sort((a, b) => b.rating - a.rating)
@@ -525,10 +530,6 @@ export default function AnimePortal({
       console.error("Rating error:", error);
     }
   };
-  const [filterYear, setFilterYear] = useState<string>('All');
-  const [filterType, setFilterType] = useState<string>('All');
-  const [filterStatus, setFilterStatus] = useState<string>('All');
-  const [showFilters, setShowFilters] = useState(false);
   const [history, setHistory] = useState<any[]>([]);
   const trendingRef = useRef<HTMLDivElement>(null);
   const popularRef = useRef<HTMLDivElement>(null);
@@ -643,14 +644,23 @@ export default function AnimePortal({
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  const [sortBy, setSortBy] = useState<'latest' | 'rating' | 'year'>('latest');
+  const [episodeProgress, setEpisodeProgress] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (!user || history.length === 0) return;
+    const progress: Record<string, number> = {};
+    history.forEach(h => {
+      if (h.animeId && h.episodeId) {
+        progress[`${h.animeId}_${h.episodeId}`] = h.progress || 0;
+      }
+    });
+    setEpisodeProgress(progress);
+  }, [user, history]);
 
   let filteredAnime = animeList.filter(anime => {
     const matchesSearch = anime.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           anime.description?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = selectedCategory === 'All' || anime.category === selectedCategory;
     const matchesWatchlist = !showWatchlistOnly || watchlist.has(anime.id);
-    const matchesYear = filterYear === 'All' || anime.year?.toString() === filterYear;
     
     // Support sidebar filtering
     let matchesTab = true;
@@ -662,16 +672,11 @@ export default function AnimePortal({
         default: matchesTab = true; 
     }
 
-    const matchesStatus = filterStatus === 'All' || (anime as any).status === filterStatus;
-    
-    return matchesSearch && matchesCategory && matchesWatchlist && matchesYear && matchesStatus && matchesTab;
+    return matchesSearch && matchesWatchlist && matchesTab;
   });
 
   // Apply sorting
   filteredAnime = [...filteredAnime].sort((a, b) => {
-    if (sortBy === 'rating') return (b.rating || 0) - (a.rating || 0);
-    if (sortBy === 'year') return (b.year || 0) - (a.year || 0);
-    
     const getTs = (d: any) => typeof d === 'number' ? d : (d?.toMillis ? d.toMillis() : (d?.toDate ? d.toDate().getTime() : 0));
     return getTs(b.createdAt) - getTs(a.createdAt);
   });
@@ -685,20 +690,10 @@ export default function AnimePortal({
     });
   }
 
-  const availableYears = Array.from(new Set(animeList.map(a => a.year?.toString()).filter(Boolean))).sort((a, b) => b.localeCompare(a));
-
   // Deep linking logic with react-router-dom
   useEffect(() => {
     if (loading || animeList.length === 0) return;
     
-    // Handle category from URL
-    if (urlCategoryName) {
-      const matchedCat = CATEGORIES.find(c => c.toLowerCase() === urlCategoryName.toLowerCase());
-      if (matchedCat) {
-        setSelectedCategory(matchedCat);
-      }
-    }
-
     if (urlAnimeSlug) {
       const anime = animeList.find(a => slugify(a.title) === urlAnimeSlug || a.id === urlAnimeSlug);
       if (anime) {
@@ -720,7 +715,7 @@ export default function AnimePortal({
             setCurrentEpisode(null);
         }
     }
-  }, [loading, animeList, urlAnimeSlug, urlCategoryName, location.pathname]);
+  }, [loading, animeList, urlAnimeSlug, location.pathname]);
 
   // Handle specific episode from URL once loaded
   useEffect(() => {
@@ -739,7 +734,7 @@ export default function AnimePortal({
   // Reset to page 1 on search or filter change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, selectedCategory, showWatchlistOnly, filterYear, filterType, filterStatus]);
+  }, [searchTerm, showWatchlistOnly]);
 
   useEffect(() => {
     if (!selectedAnime || modalMode !== 'details') {
@@ -871,9 +866,10 @@ export default function AnimePortal({
       if (mode === 'details') {
         navigate(`/anime/${slug}`);
       } else {
-        // For player, we navigate to the first episode if not already loaded, 
-        // or specific episode logic will handle it.
-        navigate(`/watch/${slug}/1`);
+        // For player, we navigate to the last watched episode if history exists
+        const histItem = history.find(h => h.animeId === anime.id);
+        const epNum = histItem?.episodeNumber || 1;
+        navigate(`/watch/${slug}/${epNum}`);
       }
 
       if (mode === 'player') {
@@ -896,23 +892,33 @@ export default function AnimePortal({
     }
   };
 
-  const historyAnime = history.map(h => {
-    const anime = animeList.find(a => a.id === h.animeId);
-    if (!anime) return null;
-    return { ...anime, lastEpisode: h.episodeNumber };
-  }).filter(Boolean) as any[];
-
   const getTitle = () => {
     if (selectedAnime) {
       if (modalMode === 'player' && currentEpisode) {
-        return `${selectedAnime.title} - ${currentEpisode.episodeNumber}-${language === 'uz' ? 'qism' : 'серия'} - Animem.uz`;
+        return `${selectedAnime.title} - ${currentEpisode.episodeNumber}-${language === 'uz' ? 'qism' : 'серия'} - O'zbek tilida onlayn tomosha qiling - Animem.uz`;
       }
-      return `${selectedAnime.title} - Animem.uz`;
+      return `${selectedAnime.title} - O'zbek tilida sifatli anime - Animem.uz`;
     }
-    if (activeTab === 'news') return `${language === 'uz' ? 'Yangiliklar' : 'Новости'} - Animem.uz`;
-    if (activeTab === 'watchlist' || activeTab === 'saved') return `${language === 'uz' ? 'Saqlanganlar' : 'Сохраненное'} - Animem.uz`;
-    if (urlCategoryName) return `${urlCategoryName} - Animem.uz`;
-    return 'Animem.uz - Eng so\'nggi animelar markazi';
+    if (activeTab === 'news') return `${language === 'uz' ? 'So\'nggi Anime Yangiliklar' : 'Последние новости аниме'} - Animem.uz`;
+    if (activeTab === 'watchlist' || activeTab === 'saved') return `${language === 'uz' ? 'Saqlanganlar' : 'Сохраненное'} - Mening ro'yxatim - Animem.uz`;
+    return 'Animem.uz - O\'zbek tilidagi eng so\'nggi animelar markazi';
+  };
+
+  const getDescription = () => {
+    if (selectedAnime) {
+      if (modalMode === 'player' && currentEpisode) {
+        return `${selectedAnime.title} ${currentEpisode.episodeNumber}-qismini o'zbek tilida HD sifatda onlayn tomosha qiling. ${selectedAnime.description?.slice(0, 100)}...`;
+      }
+      return `${selectedAnime.title} - barcha qismlari o'zbek tilida bepul va yuqori sifatda. Animem.uz - o'zbekcha animelar markazi.`;
+    }
+    return 'Animem.uz - O\'zbekistondagi eng yirik anime portali. Barcha animelar o\'zbek tilida, sifatli ovozda va HD formatda. Eng so\'nggi seriallar va filmlar.';
+  };
+
+  const getKeywords = () => {
+    if (selectedAnime) {
+      return `${selectedAnime.title}, ${selectedAnime.title} o\'zbek tilida, ${selectedAnime.title} online ko\'rish, ${selectedAnime.category}, anime o\'zbekcha, animem, animem uz`;
+    }
+    return 'anime o\'zbek tilida, animem, animem uz, anime online, uzbek anime, vatan anime, anime ko\'rish, o\'zbekcha dublyaj, anime seriallar';
   };
 
   const getCanonical = () => {
@@ -927,13 +933,15 @@ export default function AnimePortal({
     <div className="flex flex-col min-w-0">
       <Helmet key={selectedAnime?.id || activeTab}>
         <title>{getTitle()}</title>
-        <meta name="description" content={selectedAnime ? selectedAnime.description : 'Animem.uz - O\'zbekistondagi eng yirik anime portali. Barcha animelar o\'zbek tilida, sifatli ovozda va HD formatda.'} />
+        <meta name="description" content={getDescription()} />
+        <meta name="keywords" content={getKeywords()} />
         <meta property="og:title" content={getTitle()} />
-        <meta property="og:description" content={selectedAnime ? selectedAnime.description : 'Barcha animelar o\'zbek tilida.'} />
+        <meta property="og:description" content={getDescription()} />
         <meta property="og:image" content={selectedAnime ? selectedAnime.posterUrl : 'https://i.pinimg.com/736x/17/c6/88/17c688c6242fe4c3293be182924e73a3.jpg'} />
+        <meta property="og:url" content={getCanonical()} />
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content={getTitle()} />
-        <meta name="twitter:description" content={selectedAnime ? selectedAnime.description : 'Animem.uzda tomosha qiling.'} />
+        <meta name="twitter:description" content={getDescription()} />
         <meta name="twitter:image" content={selectedAnime ? selectedAnime.posterUrl : 'https://i.pinimg.com/736x/17/c6/88/17c688c6242fe4c3293be182924e73a3.jpg'} />
         <link rel="canonical" href={getCanonical()} />
         <link rel="alternate" hrefLang="uz" href={getCanonical()} />
@@ -943,14 +951,20 @@ export default function AnimePortal({
           <script type="application/ld+json">
             {JSON.stringify({
               "@context": "https://schema.org",
-              "@type": "Movie",
-              "name": selectedAnime.title,
+              "@type": modalMode === 'player' ? "VideoObject" : "Movie",
+              "name": modalMode === 'player' ? `${selectedAnime.title} - Ep ${currentEpisode?.episodeNumber}` : selectedAnime.title,
               "description": selectedAnime.description,
-              "image": selectedAnime.posterUrl,
+              "thumbnailUrl": selectedAnime.posterUrl,
+              "uploadDate": selectedAnime.createdAt?.toDate ? selectedAnime.createdAt.toDate().toISOString() : new Date().toISOString(),
               "genre": selectedAnime.category,
               "author": {
                 "@type": "Organization",
                 "name": "Animem Uz"
+              },
+              "interactionStatistic": {
+                "@type": "InteractionCounter",
+                "interactionType": "https://schema.org/WatchAction",
+                "userInteractionCount": selectedAnime.views || 0
               }
             })}
           </script>
@@ -962,7 +976,7 @@ export default function AnimePortal({
         <div className="flex-1 min-w-0 py-2 sm:py-6 pb-32">
           
           {/* Trending Hero Section */}
-          {!loading && featuredAnime && activeTab === 'gallery' && (selectedCategory === 'All') && !searchTerm && !showWatchlistOnly && (
+          {!loading && featuredAnime && activeTab === 'gallery' && !searchTerm && !showWatchlistOnly && (
             <div className="mb-8 md:mb-12">
               <div className="relative aspect-[4/5] sm:aspect-[21/9] sm:rounded-[2.5rem] overflow-hidden group shadow-2xl bg-black -mx-4 sm:mx-0">
                 <AnimatePresence mode="wait">
@@ -1069,8 +1083,8 @@ export default function AnimePortal({
             </div>
           )}
 
-          {/* Filter/Search Results Grid */}
-          {((selectedCategory !== 'All') || searchTerm || showWatchlistOnly || activeTab === 'anime' || activeTab === 'news') && (
+
+          {(searchTerm || showWatchlistOnly || activeTab === 'anime' || activeTab === 'news') && (
             <div className="px-4">
                <div className="flex items-center justify-between mb-10 pb-6 border-b border-white/5">
                   <div className="flex flex-col gap-2">
@@ -1079,39 +1093,24 @@ export default function AnimePortal({
                         {showWatchlistOnly ? t('saved') : 
                          searchTerm ? `"${searchTerm}"` : 
                          activeTab === 'news' ? t('news' as any) :
-                         activeTab === 'anime' && selectedCategory === 'All' ? t('anime' as any) :
-                         t((categoryKeys[selectedCategory] || selectedCategory) as any)}
-                     </h2>
+                         t('anime' as any)}
+                      </h2>
                       <div className="flex items-center gap-4">
                         <p className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-500">Showing {filteredAnime.length} results</p>
-                        <div className="h-1 w-1 rounded-full bg-slate-700" />
-                        <div className="flex items-center gap-2">
-                          <span className="text-[8px] font-black uppercase tracking-widest text-slate-600">Saralash:</span>
-                          <select 
-                            value={sortBy}
-                            onChange={(e) => setSortBy(e.target.value as any)}
-                            className="bg-transparent text-[8px] font-black uppercase tracking-widest text-red-500 focus:outline-none cursor-pointer"
-                          >
-                            <option value="latest" className="bg-[#12121F]">Yangi</option>
-                            <option value="rating" className="bg-[#12121F]">Reyting</option>
-                            <option value="year" className="bg-[#12121F]">Yil</option>
-                          </select>
-                        </div>
                       </div>
                   </div>
                   
                   {/* Action Buttons for Filter View */}
-                  {(selectedCategory !== 'All' || searchTerm) && (
+                  {searchTerm && (
                     <div className="flex items-center gap-3">
                        <button 
                          onClick={() => {
-                          setSelectedCategory('All');
                           if (searchTerm) setSearchTerm('');
                          }}
                          className="p-4 bg-white/5 hover:bg-white/10 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-white transition-all flex items-center gap-2 group"
                        >
                           <XCircle size={16} className="group-hover:rotate-90 transition-transform" />
-                          Clear Filter
+                          Tozalash
                        </button>
                     </div>
                   )}
@@ -1202,34 +1201,85 @@ export default function AnimePortal({
             </div>
           )}
 
-          {/* Rail: Trending Now */}
-          {(activeTab === 'gallery' && (selectedCategory === 'All') && !searchTerm && !showWatchlistOnly) && (
+          {/* Rail: Continue Watching (Personalized) */}
+          {activeTab === 'gallery' && !searchTerm && !showWatchlistOnly && user && history.length > 0 && (
             <div className="mb-12">
-            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-black tracking-tight uppercase flex items-center gap-2">
+                  <div className="w-1.5 h-6 bg-red-500 rounded-full" />
+                  Ko'rishda davom etish
+                </h2>
+                <div className="flex items-center gap-4">
+                  <button onClick={() => setHistory([])} className="text-[10px] font-black text-slate-500 hover:text-red-400 uppercase tracking-widest transition-colors flex items-center gap-2 group">
+                    Tozalash
+                    <Trash2 size={14} className="group-hover:scale-110 transition-transform" />
+                  </button>
+                </div>
+              </div>
+              <div className="flex gap-6 overflow-x-auto no-scrollbar pb-4 -mx-4 px-4 scroll-smooth">
+                {history.slice(0, 8).map((h) => {
+                  const anime = animeList.find(a => a.id === h.animeId);
+                  if (!anime) return null;
+                  return (
+                    <div 
+                      key={`history-${h.id}`}
+                      onClick={() => {
+                        const ep = episodes.find(e => e.id === h.episodeId) || { id: h.episodeId, episodeNumber: h.episodeNumber };
+                        handleOpenAnime(anime, 'player');
+                        // Substantial logic for episode selection will trigger on open
+                      }}
+                      className="flex-shrink-0 w-64 group cursor-pointer h-32 flex items-center gap-4 bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 rounded-3xl p-3 transition-all relative overflow-hidden"
+                    >
+                      <div className="w-20 h-full rounded-2xl overflow-hidden border border-white/5 shrink-0 bg-slate-900 relative">
+                        <img 
+                          src={anime.posterUrl} 
+                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" 
+                          referrerPolicy="no-referrer" 
+                          alt={anime.title}
+                        />
+                      </div>
+                      <div className="min-w-0 pr-2">
+                        <h3 className="font-bold text-xs uppercase tracking-tight text-white group-hover:text-red-400 transition-colors line-clamp-1">{anime.title}</h3>
+                        <p className="text-[9px] font-black text-red-500 uppercase tracking-widest mt-1">{h.episodeNumber}-qism</p>
+                        <div className="mt-2 w-full h-1 bg-white/10 rounded-full overflow-hidden">
+                           <div className="h-full bg-red-600" style={{ width: '45%' }} /> {/* Placeholder progress since we don't have total duration here easily */}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Rail: Trending Now */}
+          {(activeTab === 'gallery' && !searchTerm && !showWatchlistOnly) && (
+            <div className="mb-12">
+            <div className="flex items-center justify-between mb-2">
               <h2 className="text-xl font-black tracking-tight uppercase flex items-center gap-2">
                 <div className="w-1.5 h-6 bg-red-500 rounded-full" />
                 {t('trendingNow' as any)}
               </h2>
               <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2 mr-2">
-                  <button 
-                    onClick={() => scrollHandler(trendingRef, 'left')}
-                    className="w-8 h-8 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-full text-white transition-all active:scale-90 border border-white/5"
-                  >
-                    <ChevronLeft size={16} />
-                  </button>
-                  <button 
-                    onClick={() => scrollHandler(trendingRef, 'right')}
-                    className="w-8 h-8 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-full text-white transition-all active:scale-90 border border-white/5"
-                  >
-                    <ChevronRight size={16} />
-                  </button>
-                </div>
                 <button onClick={() => { setActiveTab('anime'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-[10px] font-black text-slate-500 hover:text-red-400 uppercase tracking-widest transition-colors flex items-center gap-2 group">
                   {t('seeAll' as any)}
                   <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
                 </button>
               </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 mb-6 pr-2">
+                <button 
+                  onClick={() => scrollHandler(trendingRef, 'left')}
+                  className="w-10 h-10 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-xl text-white transition-all active:scale-90 border border-white/5"
+                >
+                  <ChevronLeft size={18} />
+                </button>
+                <button 
+                  onClick={() => scrollHandler(trendingRef, 'right')}
+                  className="w-10 h-10 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-xl text-white transition-all active:scale-90 border border-white/5"
+                >
+                  <ChevronRight size={18} />
+                </button>
             </div>
             <div ref={trendingRef} className="flex gap-6 overflow-x-auto no-scrollbar pb-4 -mx-4 px-4 scroll-smooth">
               {animeList.sort((a, b) => (b.views || 0) - (a.views || 0)).slice(0, 10).map((anime) => (
@@ -1268,33 +1318,33 @@ export default function AnimePortal({
           )}
 
           {/* Rail: Popular This Week */}
-          {(activeTab === 'gallery' && (selectedCategory === 'All') && !searchTerm && !showWatchlistOnly) && (
+          {(activeTab === 'gallery' && !searchTerm && !showWatchlistOnly) && (
           <div className="mb-12">
-            <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center justify-between mb-2">
               <h2 className="text-xl font-black tracking-tight uppercase flex items-center gap-2">
                 <div className="w-1.5 h-6 bg-red-500 rounded-full" />
                 {t('popularThisWeek' as any)}
               </h2>
               <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2 mr-2">
-                  <button 
-                    onClick={() => scrollHandler(popularRef, 'left')}
-                    className="w-8 h-8 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-full text-white transition-all active:scale-90 border border-white/5"
-                  >
-                    <ChevronLeft size={16} />
-                  </button>
-                  <button 
-                    onClick={() => scrollHandler(popularRef, 'right')}
-                    className="w-8 h-8 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-full text-white transition-all active:scale-90 border border-white/5"
-                  >
-                    <ChevronRight size={16} />
-                  </button>
-                </div>
                 <button onClick={() => { setActiveTab('anime'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-[10px] font-black text-slate-500 hover:text-red-400 uppercase tracking-widest transition-colors flex items-center gap-2 group">
                   {t('seeAll' as any)}
                   <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
                 </button>
               </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 mb-6 pr-2">
+                <button 
+                  onClick={() => scrollHandler(popularRef, 'left')}
+                  className="w-10 h-10 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-xl text-white transition-all active:scale-90 border border-white/5"
+                >
+                  <ChevronLeft size={18} />
+                </button>
+                <button 
+                  onClick={() => scrollHandler(popularRef, 'right')}
+                  className="w-10 h-10 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-xl text-white transition-all active:scale-90 border border-white/5"
+                >
+                  <ChevronRight size={18} />
+                </button>
             </div>
             <div ref={popularRef} className="flex gap-6 overflow-x-auto no-scrollbar pb-4 -mx-4 px-4 scroll-smooth">
               {animeList.filter(a => a.rating >= 8.5).slice(0, 10).map((anime, i) => (
@@ -1335,33 +1385,33 @@ export default function AnimePortal({
           )}
 
           {/* Rail: Top Rating (moved to bottom) */}
-          {activeTab === 'gallery' && (selectedCategory === 'All') && !searchTerm && !showWatchlistOnly && (
+          {activeTab === 'gallery' && !searchTerm && !showWatchlistOnly && (
             <div className="mb-12">
-              <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center justify-between mb-2">
                 <h2 className="text-xl font-black tracking-tight uppercase flex items-center gap-2">
                   <div className="w-1.5 h-6 bg-red-500 rounded-full" />
                   {t('topRating' as any)}
                 </h2>
                 <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2 mr-2">
-                    <button 
-                      onClick={() => scrollHandler(topRatingRef, 'left')}
-                      className="w-8 h-8 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-full text-white transition-all active:scale-90 border border-white/5"
-                    >
-                      <ChevronLeft size={16} />
-                    </button>
-                    <button 
-                      onClick={() => scrollHandler(topRatingRef, 'right')}
-                      className="w-8 h-8 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-full text-white transition-all active:scale-90 border border-white/5"
-                    >
-                      <ChevronRight size={16} />
-                    </button>
-                  </div>
                   <button onClick={() => { setActiveTab('anime'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-[10px] font-black text-slate-500 hover:text-red-400 uppercase tracking-widest transition-colors flex items-center gap-2 group">
                     {t('seeAll' as any)}
                     <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
                   </button>
                 </div>
+              </div>
+              <div className="flex items-center justify-end gap-2 mb-6 pr-2">
+                  <button 
+                    onClick={() => scrollHandler(topRatingRef, 'left')}
+                    className="w-10 h-10 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-xl text-white transition-all active:scale-90 border border-white/5"
+                  >
+                    <ChevronLeft size={18} />
+                  </button>
+                  <button 
+                    onClick={() => scrollHandler(topRatingRef, 'right')}
+                    className="w-10 h-10 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-xl text-white transition-all active:scale-90 border border-white/5"
+                  >
+                    <ChevronRight size={18} />
+                  </button>
               </div>
               
               <div ref={topRatingRef} className="flex gap-6 overflow-x-auto no-scrollbar pb-4 -mx-4 px-4 scroll-smooth">
@@ -1530,38 +1580,74 @@ export default function AnimePortal({
                                Qismlarni tanlang
                                <span className="px-2 py-0.5 bg-white/5 rounded text-[10px] text-slate-500 font-bold">{episodes.length} TA QISM</span>
                             </h3>
-                            <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2">
-                                {loadingEpisodes ? (
-                                    [1,2,3,4,5,6,7,8].map(i => <div key={i} className="aspect-square bg-white/5 animate-pulse rounded-lg" />)
-                                ) : episodes.length > 0 ? (
-                                    episodes.map((ep) => (
-                                        <button
-                                            key={ep.id}
-                                            onClick={() => {
-                                                handleEpisodeSelect(ep);
-                                                setModalMode('player');
-                                            }}
-                                            className={cn(
-                                                "aspect-square flex items-center justify-center bg-white/5 hover:bg-red-600 transition-all group rounded-lg border border-white/5 hover:border-red-500 hover:shadow-[0_0_15px_rgba(220,38,38,0.3)]",
-                                                currentEpisode?.id === ep.id && "bg-red-600 border-red-500 shadow-[0_0_15px_rgba(220,38,38,0.3)]"
-                                            )}
-                                        >
-                                            <span className={cn(
-                                                "text-xs font-black transition-colors",
-                                                currentEpisode?.id === ep.id ? "text-white" : "text-slate-400 group-hover:text-white"
-                                            )}>
-                                                {ep.episodeNumber}
-                                            </span>
-                                        </button>
-                                    ))
-                                ) : (
-                                    <div className="col-span-full py-12 text-center border-2 border-dashed border-white/5 rounded-2xl">
-                                        <div className="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-600">
-                                            <Film size={24} />
-                                        </div>
-                                        <h4 className="text-slate-500 font-black uppercase tracking-widest text-[10px]">Hozircha qismlar yuklanmagan</h4>
-                                    </div>
-                                )}
+                            <div className="flex flex-col gap-4">
+                              <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2">
+                                  {loadingEpisodes ? (
+                                      [1,2,3,4,5,6,7,8].map(i => <div key={i} className="aspect-square bg-white/5 animate-pulse rounded-lg" />)
+                                  ) : episodes.length > 0 ? (
+                                      episodes.slice(episodePage * EPISODES_PER_PAGE, (episodePage + 1) * EPISODES_PER_PAGE).map((ep) => (
+                                          <button
+                                              key={ep.id}
+                                              onClick={() => {
+                                                  handleEpisodeSelect(ep);
+                                                  setModalMode('player');
+                                              }}
+                                              className={cn(
+                                                  "aspect-square flex flex-col items-center justify-center bg-white/5 hover:bg-red-600 transition-all group rounded-lg border border-white/5 hover:border-red-500 hover:shadow-[0_0_15px_rgba(220,38,38,0.3)] relative overflow-hidden",
+                                                  currentEpisode?.id === ep.id && "bg-red-600 border-red-500 shadow-[0_0_15px_rgba(220,38,38,0.3)]"
+                                              )}
+                                          >
+                                              <span className={cn(
+                                                  "text-xs font-black transition-colors",
+                                                  currentEpisode?.id === ep.id ? "text-white" : "text-slate-400 group-hover:text-white"
+                                              )}>
+                                                  {ep.episodeNumber}
+                                              </span>
+
+                                              {/* Progress indicator */}
+                                              {episodeProgress[`${selectedAnime.id}_${ep.id}`] > 0 && (
+                                                <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/10">
+                                                  <div 
+                                                    className="h-full bg-red-400" 
+                                                    style={{ width: `${Math.min(100, (episodeProgress[`${selectedAnime.id}_${ep.id}`] / 1440) * 100)}%` }}
+                                                  />
+                                                </div>
+                                              )}
+                                          </button>
+                                      ))
+                                  ) : (
+                                      <div className="col-span-full py-12 text-center border-2 border-dashed border-white/5 rounded-2xl">
+                                          <div className="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-600">
+                                              <Film size={24} />
+                                          </div>
+                                          <h4 className="text-slate-500 font-black uppercase tracking-widest text-[10px]">Hozircha qismlar yuklanmagan</h4>
+                                      </div>
+                                  )}
+                              </div>
+
+                              {episodes.length > EPISODES_PER_PAGE && (
+                                <div className="flex items-center justify-center gap-4 mt-4 bg-white/[0.02] p-4 rounded-2xl border border-white/5">
+                                  <button
+                                    disabled={episodePage === 0}
+                                    onClick={() => setEpisodePage(prev => Math.max(0, prev - 1))}
+                                    className="px-6 py-3 bg-white/5 hover:bg-white/10 disabled:opacity-20 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2"
+                                  >
+                                    <ArrowLeft size={14} />
+                                    Ortga qaytarish
+                                  </button>
+                                  <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                                    Sahifa {episodePage + 1} / {Math.ceil(episodes.length / EPISODES_PER_PAGE)}
+                                  </div>
+                                  <button
+                                    disabled={(episodePage + 1) * EPISODES_PER_PAGE >= episodes.length}
+                                    onClick={() => setEpisodePage(prev => prev + 1)}
+                                    className="px-6 py-3 bg-red-600 hover:bg-red-500 disabled:opacity-20 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 text-white shadow-lg shadow-red-600/20"
+                                  >
+                                    Keyingi qisimlar
+                                    <ChevronRight size={14} />
+                                  </button>
+                                </div>
+                              )}
                             </div>
                         </div>
                       </div>
@@ -1955,7 +2041,7 @@ export default function AnimePortal({
                                  <div key={i} className="aspect-square bg-white/[0.02] border border-white/5 rounded-xl animate-pulse" />
                                ))
                              ) : (
-                               episodes.map((ep) => (
+                               episodes.slice(episodePage * EPISODES_PER_PAGE, (episodePage + 1) * EPISODES_PER_PAGE).map((ep) => (
                                  <button
                                    key={ep.id}
                                    onClick={() => handleEpisodeSelect(ep)}
@@ -1983,6 +2069,30 @@ export default function AnimePortal({
                                ))
                              )}
                            </div>
+
+                            {episodes.length > EPISODES_PER_PAGE && (
+                              <div className="flex items-center justify-center gap-4 mt-6 mb-10 bg-white/[0.02] p-4 rounded-2xl border border-white/5">
+                                <button
+                                  disabled={episodePage === 0}
+                                  onClick={() => setEpisodePage(prev => Math.max(0, prev - 1))}
+                                  className="px-6 py-3 bg-white/5 hover:bg-white/10 disabled:opacity-20 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2"
+                                >
+                                  <ArrowLeft size={14} />
+                                  Ortga qaytarish
+                                </button>
+                                <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                                  Sahifa {episodePage + 1} / {Math.ceil(episodes.length / EPISODES_PER_PAGE)}
+                                </div>
+                                <button
+                                  disabled={(episodePage + 1) * EPISODES_PER_PAGE >= episodes.length}
+                                  onClick={() => setEpisodePage(prev => prev + 1)}
+                                  className="px-6 py-3 bg-red-600 hover:bg-red-500 disabled:opacity-20 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 text-white shadow-lg shadow-red-600/20"
+                                >
+                                  Keyingi qisimlar
+                                  <ChevronRight size={14} />
+                                </button>
+                              </div>
+                            )}
 
                            {/* Description & Info below episodes for player mode */}
                            <div className="mt-12 pt-12 border-t border-white/5">
