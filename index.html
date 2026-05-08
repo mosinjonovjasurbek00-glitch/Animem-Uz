@@ -49,9 +49,46 @@
         "description": "O'zbekistondagi eng yirik va sifatli anime portali. Uzubekcha va ruscha dublyajdagi animelar.",
         "potentialAction": {
           "@type": "SearchAction",
-          "target": "https://animem.uz/?q={search_term_string}",
+          "target": {
+            "@type": "EntryPoint",
+            "urlTemplate": "https://animem.uz/?q={search_term_string}"
+          },
           "query-input": "required name=search_term_string"
         }
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "ItemList",
+        "itemListElement": [
+          {
+            "@type": "SiteNavigationElement",
+            "position": 1,
+            "name": "Bosh sahifa",
+            "description": "Eng yangi animelar va mashhur seriyalar",
+            "url": "https://animem.uz/"
+          },
+          {
+            "@type": "SiteNavigationElement",
+            "position": 2,
+            "name": "Katalog",
+            "description": "Barcha animelar ro'yxati, janrlar bo'yicha qidirish",
+            "url": "https://animem.uz/catalog"
+          },
+          {
+            "@type": "SiteNavigationElement",
+            "position": 3,
+            "name": "Yangiliklar",
+            "description": "Anime olamidagi eng so'nggi yangiliklar",
+            "url": "https://animem.uz/news"
+          },
+          {
+            "@type": "SiteNavigationElement",
+            "position": 4,
+            "name": "Xatchoplar",
+            "description": "Saqlangan va sevimli animelaringiz",
+            "url": "https://animem.uz/watchlist"
+          }
+        ]
       },
       {
         "@context": "https://schema.org",
