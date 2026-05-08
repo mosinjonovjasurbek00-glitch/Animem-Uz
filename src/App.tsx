@@ -428,6 +428,12 @@ function AppContent({
               ILOVANI YUKLASH
             </span>
           </a>
+          
+          <div className="mt-8 flex justify-center w-full max-w-full overflow-hidden">
+            <a href="https://beta.publishers.adsterra.com/referral/zUXZZSY82Y" rel="nofollow" target="_blank" className="max-w-full">
+              <img alt="banner" src="https://landings-cdn.adsterratech.com/referralBanners/png/728%20x%2090%20px.png" className="max-w-full h-auto object-contain" />
+            </a>
+          </div>
         </div>
       </footer>
 
