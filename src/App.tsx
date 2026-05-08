@@ -180,34 +180,39 @@ function AppContent({
     return () => unsubscribe();
   }, []);
 
-  useEffect(() => {
-    async function syncUserRole() {
-      if (user) {
-        // Fallback for hardcoded admin email
-        if (user.email === "mosinjonovjasurbek00@gmail.com") {
-          setFirestoreAdmin(true);
-          setRoleLoading(false);
-          return;
-        }
+  const [isBanned, setIsBanned] = useState(false);
 
-        try {
-          const userDocRef = doc(db, 'users', user.uid);
-          const userDoc = await getDoc(userDocRef);
-          if (userDoc.exists()) {
-            setFirestoreAdmin(userDoc.data().role === 'admin');
-          }
-        } catch (error) {
-          console.debug("Role sync debug:", error);
-        } finally {
-          setRoleLoading(false);
-        }
-      } else {
-        setFirestoreAdmin(false);
+  useEffect(() => {
+    let unsubscribe: () => void;
+    if (user) {
+      // Hardcoded admin bypass
+      if (user.email === "mosinjonovjasurbek00@gmail.com") {
+        setFirestoreAdmin(true);
+        setIsBanned(false);
         setRoleLoading(false);
-        if (!loading) setView('gallery');
+        // Continue but do not return immediately so we can still subscribe
       }
+      
+      const userDocRef = doc(db, 'users', user.uid);
+      unsubscribe = onSnapshot(userDocRef, (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          if (user.email !== "mosinjonovjasurbek00@gmail.com") {
+            setIsBanned(data.isBanned === true);
+            setFirestoreAdmin(data.role === 'admin');
+          }
+        }
+        setRoleLoading(false);
+      });
+    } else {
+      setFirestoreAdmin(false);
+      setIsBanned(false);
+      setRoleLoading(false);
+      if (!loading) setView('gallery');
     }
-    syncUserRole();
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, [user, loading]);
 
   // User has requested that all content be visible to everyone regardless of language settings
@@ -217,6 +222,28 @@ function AppContent({
     return (
       <div className="min-h-screen bg-[#0B0B14] flex items-center justify-center">
         <div className="w-12 h-12 border-4 border-red-600 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  if (isBanned) {
+    return (
+      <div className="min-h-screen bg-[#0B0B14] flex flex-col items-center justify-center p-6 text-center">
+        <div className="bg-red-600/10 p-6 rounded-full border border-red-500/20 mb-6">
+          <svg className="w-16 h-16 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+        </div>
+        <h1 className="text-3xl font-black text-white tracking-widest uppercase mb-4">Kirish Taqiqlangan</h1>
+        <p className="text-slate-400 max-w-md mx-auto mb-8 text-lg">
+          Siz admin tomonidan Bloklandingiz. Saytdan foydalana olmaysiz.
+        </p>
+        <button 
+          onClick={() => auth.signOut()}
+          className="bg-red-600 hover:bg-red-500 text-white font-black px-8 py-3 rounded-xl uppercase tracking-widest transition-all shadow-lg shadow-red-500/20"
+        >
+          Akkuntdan chiqish
+        </button>
       </div>
     );
   }

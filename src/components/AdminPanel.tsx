@@ -53,6 +53,7 @@ interface UserDoc {
   email: string;
   username: string;
   role: 'admin' | 'user';
+  isBanned?: boolean;
 }
 
 interface NewsItemDoc {
@@ -70,12 +71,15 @@ interface AdminPanelProps {
 export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
   const t = useTranslation(language);
   const [animeList, setAnimeList] = useState<AnimeDoc[]>([]);
-  const [activeTab, setActiveTab] = useState<'anime' | 'episodes' | 'messages' | 'admins' | 'news'>('anime');
+  const [activeTab, setActiveTab] = useState<'anime' | 'episodes' | 'messages' | 'admins' | 'news' | 'spam'>('anime');
   const [selectedAnimeForEpisodes, setSelectedAnimeForEpisodes] = useState<AnimeDoc | null>(null);
   const [episodes, setEpisodes] = useState<EpisodeDoc[]>([]);
   const [messages, setMessages] = useState<MessageDoc[]>([]);
   const [users, setUsers] = useState<UserDoc[]>([]);
   const [userSearch, setUserSearch] = useState('');
+  
+  const [bannedUsers, setBannedUsers] = useState<UserDoc[]>([]);
+  const [spamSearch, setSpamSearch] = useState('');
   
   const [newsItems, setNewsItems] = useState<NewsItemDoc[]>([]);
   const [newNewsText, setNewNewsText] = useState('');
@@ -228,6 +232,16 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
       const unsubscribe = onSnapshot(q, (snapshot) => {
         setNewsItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as NewsItemDoc[]);
       }, (error) => handleFirestoreError(error, OperationType.LIST, 'news_items'));
+      return () => unsubscribe();
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'spam') {
+      const q = query(collection(db, 'users'), where('isBanned', '==', true));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        setBannedUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as UserDoc[]);
+      }, (error) => handleFirestoreError(error, OperationType.LIST, 'users'));
       return () => unsubscribe();
     }
   }, [activeTab]);
@@ -641,6 +655,56 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
     });
   };
 
+  const handleBanUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!spamSearch) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const q = query(collection(db, 'users'), where('email', '==', spamSearch.trim().toLowerCase()));
+      const snap = await getDocs(q);
+      if (snap.empty) {
+        throw new Error(t('userNotFound'));
+      }
+      
+      const userToBan = snap.docs[0];
+      if (userToBan.data().email === "mosinjonovjasurbek00@gmail.com") {
+        throw new Error("Asosiy adminni bloklash mumkin emas");
+      }
+      
+      await updateDoc(userToBan.ref, { isBanned: true });
+      
+      setSpamSearch('');
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 3000);
+    } catch (err: any) {
+      setError(err.message || 'Xatolik yuz berdi');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleUnbanUser = (userId: string) => {
+    setConfirmModal({
+      show: true,
+      title: "Blokdan chiqarish",
+      message: "Rostdan ham bu foydalanuvchini blokdan chiqarmoqchimisiz?",
+      onConfirm: async () => {
+        try {
+          setSubmitting(true);
+          setConfirmModal(prev => ({ ...prev, show: false }));
+          await updateDoc(doc(db, 'users', userId), { isBanned: false });
+          setSuccess(true);
+          setTimeout(() => setSuccess(false), 3000);
+        } catch (err: any) {
+          setError('Xatolik yuz berdi');
+        } finally {
+          setSubmitting(false);
+        }
+      }
+    });
+  };
+
   const handleAddNewsItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newNewsText) return;
@@ -813,6 +877,15 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
           )}
         >
           <Sparkles size={16} /> {language === 'uz' ? 'HOT Ticker' : 'ГОРЯЧЕЕ'}
+        </button>
+        <button
+          onClick={() => setActiveTab('spam')}
+          className={cn(
+            "px-8 py-3 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all",
+            activeTab === 'spam' ? "bg-red-600 text-white shadow-xl shadow-red-500/20" : "text-slate-400 hover:text-white"
+          )}
+        >
+          <AlertCircle size={16} /> Spam
         </button>
       </div>
 
@@ -1332,6 +1405,77 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
                       <Sparkles size={48} className="text-slate-800 mx-auto mb-4" />
                       <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Hozircha xabarlar yo'q</p>
                     </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {activeTab === 'spam' && (
+          <motion.div 
+            key="spam-tab"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="grid grid-cols-1 lg:grid-cols-3 gap-10"
+          >
+            <div className="lg:col-span-1">
+              <div className="glass rounded-[2.5rem] p-8 sm:p-10 sticky top-32 border border-white/10">
+                <h2 className="text-2xl font-black uppercase tracking-tighter mb-2 text-white">Bloklash</h2>
+                <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-8">Foydalanuvchini email orqali bloklash</p>
+                
+                <form onSubmit={handleBanUser} className="space-y-6">
+                  <div>
+                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3 ml-1">Foydalanuvchi Emaili</label>
+                    <input 
+                      type="email" 
+                      placeholder="user@example.com" 
+                      className="glass-input w-full" 
+                      value={spamSearch} 
+                      onChange={e => setSpamSearch(e.target.value)} 
+                      required 
+                    />
+                  </div>
+                  
+                  <button type="submit" disabled={submitting} className="glass-button-primary w-full py-5 flex items-center justify-center gap-3 bg-red-600 hover:bg-red-500 shadow-red-600/20">
+                    {submitting ? <Loader2 className="animate-spin" size={18} /> : <AlertCircle size={18} />}
+                    <span className="text-[10px] font-black uppercase tracking-widest">Spamga qo'shish</span>
+                  </button>
+                </form>
+              </div>
+            </div>
+
+            <div className="lg:col-span-2">
+              <div className="glass rounded-[2.5rem] p-8 sm:p-12 border border-white/5 bg-white/[0.01]">
+                <h2 className="text-2xl font-black uppercase tracking-tighter mb-10 text-white">Bloklanganlar</h2>
+                
+                <div className="space-y-4">
+                  {bannedUsers.map(u => (
+                    <div key={u.id} className="glass rounded-2xl p-4 sm:p-6 flex items-center justify-between group border border-white/5 hover:border-red-500/20 transition-all bg-white/[0.02]">
+                      <div className="flex items-center gap-5">
+                        <div className="w-12 h-12 bg-red-600/10 rounded-xl flex items-center justify-center border border-red-500/20">
+                          <User size={24} className="text-red-500" />
+                        </div>
+                        <div>
+                          <h4 className="font-black text-sm uppercase tracking-tight text-white">@{u.username}</h4>
+                          <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">{u.email}</p>
+                        </div>
+                      </div>
+                      
+                      <button 
+                        onClick={() => handleUnbanUser(u.id)}
+                        className="px-4 py-2 text-[10px] font-black tracking-widest uppercase border border-red-500/20 text-red-400 hover:bg-red-500/10 rounded-xl transition-all"
+                      >
+                        Blokdan chiqarish
+                      </button>
+                    </div>
+                  ))}
+                  {bannedUsers.length === 0 && (
+                     <div className="text-center py-20">
+                       <Sparkles size={48} className="text-slate-800 mx-auto mb-4" />
+                       <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Bloklanganlar yo'q</p>
+                     </div>
                   )}
                 </div>
               </div>
