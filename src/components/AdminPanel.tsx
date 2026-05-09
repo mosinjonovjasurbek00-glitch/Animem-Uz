@@ -3,7 +3,7 @@ import { db, auth, storage, handleFirestoreError, OperationType } from '../fireb
 import { collection, addDoc, deleteDoc, doc, query, onSnapshot, serverTimestamp, where, updateDoc, getDocs, orderBy, writeBatch, getDoc, setDoc } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { Helmet } from 'react-helmet-async';
-import { Plus, Trash2, Film, Check, X, AlertCircle, Loader2, Upload, Link as LinkIcon, MessageSquare, Star, Clock, Play, List, ChevronRight, ArrowLeft, Send, User, Globe, Sparkles, TrendingUp } from 'lucide-react';
+import { Plus, Trash2, Film, Check, X, AlertCircle, Loader2, Upload, Link as LinkIcon, MessageSquare, Star, Clock, Play, List, ChevronRight, ArrowLeft, Send, User, Users, Globe, Sparkles, TrendingUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { CATEGORIES, categoryKeys } from '../constants';
@@ -71,11 +71,12 @@ interface AdminPanelProps {
 export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
   const t = useTranslation(language);
   const [animeList, setAnimeList] = useState<AnimeDoc[]>([]);
-  const [activeTab, setActiveTab] = useState<'anime' | 'episodes' | 'messages' | 'admins' | 'news' | 'spam'>('anime');
+  const [activeTab, setActiveTab] = useState<'anime' | 'episodes' | 'messages' | 'admins' | 'news' | 'spam' | 'users'>('anime');
   const [selectedAnimeForEpisodes, setSelectedAnimeForEpisodes] = useState<AnimeDoc | null>(null);
   const [episodes, setEpisodes] = useState<EpisodeDoc[]>([]);
   const [messages, setMessages] = useState<MessageDoc[]>([]);
   const [users, setUsers] = useState<UserDoc[]>([]);
+  const [allUsers, setAllUsers] = useState<UserDoc[]>([]);
   const [userSearch, setUserSearch] = useState('');
   
   const [bannedUsers, setBannedUsers] = useState<UserDoc[]>([]);
@@ -232,6 +233,16 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
       const unsubscribe = onSnapshot(q, (snapshot) => {
         setNewsItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as NewsItemDoc[]);
       }, (error) => handleFirestoreError(error, OperationType.LIST, 'news_items'));
+      return () => unsubscribe();
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'users') {
+      const q = query(collection(db, 'users'));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        setAllUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as UserDoc[]);
+      }, (error) => handleFirestoreError(error, OperationType.LIST, 'users'));
       return () => unsubscribe();
     }
   }, [activeTab]);
@@ -592,8 +603,8 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
     try {
       const snap = await getDocs(query(collection(db, 'anime')));
       for (const animeDoc of snap.docs) {
-        const views = Math.floor(Math.random() * (350000 - 108256 + 1)) + 108256;
-        await updateDoc(doc(db, 'anime', animeDoc.id), { views });
+        const randomViews = Math.floor(Math.random() * (150 - 100 + 1)) + 100;
+        await updateDoc(doc(db, 'anime', animeDoc.id), { views: randomViews });
       }
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
@@ -832,11 +843,11 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
         </div>
       )}
 
-      <div className="flex glass p-1 rounded-2xl mb-10 w-fit mx-auto gap-1">
+      <div className="flex glass p-1 rounded-2xl mb-10 w-fit mx-auto gap-1 overflow-x-auto max-w-full custom-scrollbar">
         <button
           onClick={() => { setActiveTab('anime'); setSelectedAnimeForEpisodes(null); }}
           className={cn(
-            "px-8 py-3 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all",
+            "px-6 sm:px-8 py-3 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all whitespace-nowrap",
             activeTab === 'anime' ? "bg-red-600 text-white shadow-xl shadow-red-500/20" : "text-slate-400 hover:text-white"
           )}
         >
@@ -845,7 +856,7 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
         <button
           onClick={() => setActiveTab('episodes')}
           className={cn(
-            "px-8 py-3 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all",
+            "px-6 sm:px-8 py-3 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all whitespace-nowrap",
             activeTab === 'episodes' ? "bg-red-600 text-white shadow-xl shadow-red-500/20" : "text-slate-400 hover:text-white"
           )}
         >
@@ -854,7 +865,7 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
         <button
           onClick={() => setActiveTab('messages')}
           className={cn(
-            "px-8 py-3 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all",
+            "px-6 sm:px-8 py-3 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all whitespace-nowrap",
             activeTab === 'messages' ? "bg-red-600 text-white shadow-xl shadow-red-500/20" : "text-slate-400 hover:text-white"
           )}
         >
@@ -863,16 +874,25 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
         <button
           onClick={() => setActiveTab('admins')}
           className={cn(
-            "px-8 py-3 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all",
+            "px-6 sm:px-8 py-3 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all whitespace-nowrap",
             activeTab === 'admins' ? "bg-red-600 text-white shadow-xl shadow-red-500/20" : "text-slate-400 hover:text-white"
           )}
         >
           <User size={16} /> {t('adminsTab')}
         </button>
         <button
+          onClick={() => setActiveTab('users')}
+          className={cn(
+            "px-6 sm:px-8 py-3 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all whitespace-nowrap",
+            activeTab === 'users' ? "bg-red-600 text-white shadow-xl shadow-red-500/20" : "text-slate-400 hover:text-white"
+          )}
+        >
+          <Users size={16} /> Foydalanuvchilar
+        </button>
+        <button
           onClick={() => setActiveTab('news')}
           className={cn(
-            "px-8 py-3 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all",
+            "px-6 sm:px-8 py-3 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all whitespace-nowrap",
             activeTab === 'news' ? "bg-red-600 text-white shadow-xl shadow-red-500/20" : "text-slate-400 hover:text-white"
           )}
         >
@@ -881,7 +901,7 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
         <button
           onClick={() => setActiveTab('spam')}
           className={cn(
-            "px-8 py-3 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all",
+            "px-6 sm:px-8 py-3 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all whitespace-nowrap",
             activeTab === 'spam' ? "bg-red-600 text-white shadow-xl shadow-red-500/20" : "text-slate-400 hover:text-white"
           )}
         >
@@ -928,7 +948,7 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
           className="bg-indigo-600 outline-none text-white px-6 py-3 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-indigo-500 transition-all flex items-center justify-center gap-2 group shadow-xl shadow-indigo-600/20"
         >
           {submitting ? <Loader2 size={16} className="animate-spin" /> : <TrendingUp size={16} />}
-          Barcha Ko'rishlarni Ko'tarish
+          Ko'rishlarni normal holatga qaytarish (100 - 150)
         </button>
       </div>
 
@@ -1321,6 +1341,55 @@ export default function AdminPanel({ language, setLanguage }: AdminPanelProps) {
                     </div>
                   ))}
                 </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {activeTab === 'users' && (
+          <motion.div 
+            key="users-tab"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="grid grid-cols-1 gap-10"
+          >
+            <div className="glass rounded-[2.5rem] p-8 sm:p-12 border border-white/5 bg-white/[0.01]">
+              <h2 className="text-2xl font-black uppercase tracking-tighter mb-10 text-white flex items-center justify-between">
+                <span>Foydalanuvchilar ({allUsers.length})</span>
+              </h2>
+              
+              <div className="space-y-4 max-h-[800px] overflow-y-auto pr-2 custom-scrollbar">
+                {allUsers.map(u => (
+                  <div key={u.id} className="glass rounded-2xl p-4 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between group border border-white/5 hover:border-red-500/20 transition-all bg-white/[0.02] gap-4">
+                    <div className="flex items-center gap-5">
+                      <div className={cn(
+                        "w-12 h-12 rounded-xl flex items-center justify-center border",
+                        u.role === 'admin' ? "bg-red-600/10 border-red-500/20 text-red-500" : "bg-slate-800/50 border-white/10 text-slate-400"
+                      )}>
+                        <User size={24} />
+                      </div>
+                      <div>
+                        <h4 className="font-black text-sm uppercase tracking-tight text-white flex items-center gap-2">
+                          @{u.username || 'Noma\'lum'}
+                          {u.role === 'admin' && (
+                            <span className="text-[8px] bg-red-600/20 text-red-400 px-2 py-0.5 rounded-full border border-red-500/20">ADMIN</span>
+                          )}
+                          {u.isBanned && (
+                            <span className="text-[8px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full border border-slate-700">BANNED</span>
+                          )}
+                        </h4>
+                        <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">{u.email}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {allUsers.length === 0 && (
+                   <div className="text-center py-20">
+                     <Users size={48} className="text-slate-800 mx-auto mb-4" />
+                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Foydalanuvchilar topilmadi</p>
+                   </div>
+                )}
               </div>
             </div>
           </motion.div>
