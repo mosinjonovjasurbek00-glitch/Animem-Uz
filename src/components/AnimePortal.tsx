@@ -60,15 +60,35 @@ const UniversalVideoPlayer = ({ src, videoRef, videoLoading, setVideoLoading, se
   const [duration, setDuration] = useState(0);
   const [isIframe, setIsIframe] = useState(false);
   const [showControls, setShowControls] = useState(true);
+  const [volume, setVolume] = useState(1);
+  const [isMuted, setIsMuted] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const [centerIcon, setCenterIcon] = useState<'play' | 'pause' | 'forward' | 'backward' | null>(null);
   const controlsTimer = useRef<any>(null);
+  const centerIconTimer = useRef<any>(null);
 
   const toggleControls = () => {
     setShowControls(true);
     if (controlsTimer.current) clearTimeout(controlsTimer.current);
     controlsTimer.current = setTimeout(() => {
-      if (isPlaying) setShowControls(false);
+      if (isPlaying && !showSettings) setShowControls(false);
     }, 3000);
   };
+
+  const showCenterIcon = (type: 'play' | 'pause' | 'forward' | 'backward') => {
+    setCenterIcon(type);
+    if (centerIconTimer.current) clearTimeout(centerIconTimer.current);
+    centerIconTimer.current = setTimeout(() => setCenterIcon(null), 500);
+  };
+
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.volume = volume;
+      videoRef.current.muted = isMuted;
+      videoRef.current.playbackRate = playbackRate;
+    }
+  }, [volume, isMuted, playbackRate]);
 
   useEffect(() => {
     toggleControls();
@@ -241,10 +261,11 @@ const UniversalVideoPlayer = ({ src, videoRef, videoLoading, setVideoLoading, se
       className="relative w-full h-full bg-black flex items-center justify-center group overflow-hidden"
       onClick={toggleControls}
       onMouseMove={toggleControls}
+      onMouseLeave={() => { if (isPlaying) setShowControls(false); }}
     >
       <video 
         ref={videoRef}
-        className="w-full h-full object-contain outline-none focus:outline-none" 
+        className="w-full h-full object-contain outline-none focus:outline-none bg-black" 
         key={resolvedSrc || src}
         playsInline 
         autoPlay
@@ -289,8 +310,27 @@ const UniversalVideoPlayer = ({ src, videoRef, videoLoading, setVideoLoading, se
             if (videoRef.current.paused) {
               const p = videoRef.current.play();
               if (p !== undefined) p.catch(() => {});
+              showCenterIcon('play');
             } else {
               videoRef.current.pause();
+              showCenterIcon('pause');
+            }
+          }
+        }}
+        onDoubleClick={(e) => {
+          // Double click to enter fullscreen or seek
+          const rect = e.currentTarget.getBoundingClientRect();
+          const clickX = e.clientX - rect.left;
+          if (clickX > rect.width * 0.7) {
+            if (videoRef.current) videoRef.current.currentTime = Math.min(videoRef.current.currentTime + 10, duration);
+            showCenterIcon('forward');
+          } else if (clickX < rect.width * 0.3) {
+            if (videoRef.current) videoRef.current.currentTime = Math.max(videoRef.current.currentTime - 10, 0);
+            showCenterIcon('backward');
+          } else {
+            if (videoRef.current) {
+              if (videoRef.current.requestFullscreen) videoRef.current.requestFullscreen();
+              else if ((videoRef.current as any).webkitRequestFullscreen) (videoRef.current as any).webkitRequestFullscreen();
             }
           }
         }}
@@ -313,85 +353,216 @@ const UniversalVideoPlayer = ({ src, videoRef, videoLoading, setVideoLoading, se
         }}
       />
       
-      {/* Custom Controls Overlay */}
-      <div className={cn(
-        "absolute bottom-0 left-0 right-0 p-4 sm:p-6 bg-gradient-to-t from-black/90 to-transparent transition-opacity flex items-center justify-between z-[200] gap-4",
-        showControls || !isPlaying ? "opacity-100" : "opacity-0 pointer-events-none"
-      )}>
-        <div className="flex items-center gap-1.5 sm:gap-2">
-          {onPrev && (
-            <button 
-              disabled={!hasPrev}
-              className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center bg-white/10 hover:bg-red-600 border border-white/10 rounded-full text-white transition-all active:scale-90 disabled:opacity-20 disabled:pointer-events-none group/prev" 
-              onClick={(e) => {
-                e.stopPropagation();
-                onPrev();
-              }}
-              title="Oldingi qism"
-            >
-              <SkipBack size={16} className="group-hover/prev:-translate-x-0.5 transition-transform" />
-            </button>
-          )}
-
-          <button 
-            className="w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center bg-red-600 hover:bg-red-500 rounded-full text-white transition-all active:scale-90 shadow-lg shadow-red-600/20" 
-            onClick={(e) => {
-              e.stopPropagation();
-              if (videoRef.current?.paused) { 
-                const p = videoRef.current?.play(); 
-                if (p !== undefined) p.catch(() => {});
-              }
-              else { videoRef.current?.pause(); }
-            }}
+      {/* Center Action Icon */}
+      <AnimatePresence>
+        {centerIcon && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.5 }}
+            animate={{ opacity: 1, scale: 1.2 }}
+            exit={{ opacity: 0, scale: 1.5 }}
+            transition={{ duration: 0.4, ease: "easeOut" }}
+            className="absolute inset-0 flex items-center justify-center pointer-events-none z-[100]"
           >
-            {isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} className="ml-1" fill="currentColor" />}
-          </button>
+            <div className="w-20 h-20 bg-black/50 rounded-full flex items-center justify-center backdrop-blur-sm text-white">
+              {centerIcon === 'play' && <Play size={40} className="ml-2" fill="currentColor" />}
+              {centerIcon === 'pause' && <Pause size={40} fill="currentColor" />}
+              {centerIcon === 'forward' && <div className="flex flex-col items-center"><SkipForward size={30} fill="currentColor" /><span className="text-[10px] font-bold mt-1">+10s</span></div>}
+              {centerIcon === 'backward' && <div className="flex flex-col items-center"><SkipBack size={30} fill="currentColor" /><span className="text-[10px] font-bold mt-1">-10s</span></div>}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-          {onNext && (
-            <button 
-              disabled={!hasNext}
-              className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center bg-white/10 hover:bg-red-600 border border-white/10 rounded-full text-white transition-all active:scale-90 disabled:opacity-20 disabled:pointer-events-none group/next" 
-              onClick={(e) => {
-                e.stopPropagation();
-                onNext();
-              }}
-              title="Keyingi qism"
-            >
-              <SkipForward size={16} className="group-hover/next:translate-x-0.5 transition-transform" />
-            </button>
-          )}
-        </div>
-        
-        <div className="flex-1 flex items-center gap-2 sm:gap-4 text-white text-[10px] sm:text-xs font-bold">
-           <span className="tabular-nums">{Math.floor(currentTime / 60)}:{Math.floor(currentTime % 60).toString().padStart(2, '0')}</span>
-           <div 
-            className="flex-1 h-1.5 sm:h-2 bg-white/20 rounded-full cursor-pointer relative group/progress" 
-            onClick={(e) => {
-              e.stopPropagation();
-              const rect = e.currentTarget.getBoundingClientRect();
-              const percent = (e.clientX - rect.left) / rect.width;
-              if (videoRef.current) videoRef.current.currentTime = percent * duration;
-            }}
-           >
-             <div className="h-full bg-red-600 rounded-full relative" style={{ width: `${(currentTime / (duration || 1)) * 100}%` }}>
-               <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full scale-0 group-hover/progress:scale-100 transition-transform" />
-             </div>
-           </div>
-           <span className="tabular-nums">{Math.floor(duration / 60)}:{Math.floor(duration % 60).toString().padStart(2, '0')}</span>
-        </div>
-
-        <button 
-          className="w-10 h-10 hidden sm:flex items-center justify-center bg-white/10 hover:bg-white/20 rounded-full text-white transition-all active:scale-90"
+      {/* Controls Container */}
+      <div className={cn(
+        "absolute bottom-0 left-0 right-0 px-4 sm:px-8 pb-4 sm:pb-6 pt-24 bg-gradient-to-t from-black/90 via-black/60 to-transparent transition-all duration-300 flex flex-col justify-end z-[200]",
+        showControls || !isPlaying ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
+      )}>
+        {/* Progress Bar */}
+        <div 
+          className="w-full h-1.5 sm:h-2 bg-white/20 rounded-full cursor-pointer relative group/progress hover:h-2.5 sm:hover:h-3 transition-all mb-4" 
           onClick={(e) => {
             e.stopPropagation();
-            if (videoRef.current) {
-              if (videoRef.current.requestFullscreen) videoRef.current.requestFullscreen();
-              else if ((videoRef.current as any).webkitRequestFullscreen) (videoRef.current as any).webkitRequestFullscreen();
-            }
+            const rect = e.currentTarget.getBoundingClientRect();
+            const percent = (e.clientX - rect.left) / rect.width;
+            if (videoRef.current && duration) videoRef.current.currentTime = Math.max(0, Math.min(percent * duration, duration));
+          }}
+          onMouseMove={(e) => {
+            // Can add thumbnail preview here in future
           }}
         >
-          <Maximize size={20} />
-        </button>
+          {/* Buffered */}
+          <div className="absolute top-0 bottom-0 left-0 bg-white/30 rounded-full pointer-events-none transition-all duration-300" style={{ width: '0%' }} ref={(r) => {
+             if (r && videoRef.current && videoRef.current.buffered.length > 0) {
+                const b = videoRef.current.buffered.end(videoRef.current.buffered.length - 1);
+                r.style.width = `${(b / (duration || 1)) * 100}%`;
+             }
+          }} />
+          <div className="absolute top-0 bottom-0 left-0 bg-red-600 rounded-full flex items-center justify-end" style={{ width: `${(currentTime / (duration || 1)) * 100}%` }}>
+            <div className="w-4 h-4 sm:w-5 sm:h-5 bg-red-600 rounded-full shadow-lg scale-0 group-hover/progress:scale-100 transition-transform absolute -right-2 sm:-right-2.5 flex items-center justify-center">
+              <div className="w-1.5 h-1.5 bg-white rounded-full" />
+            </div>
+          </div>
+        </div>
+
+        {/* Buttons Row */}
+        <div className="flex items-center justify-between w-full">
+          {/* Left Controls */}
+          <div className="flex items-center gap-4 sm:gap-6">
+            <button 
+              className="text-white hover:text-red-500 transition-colors active:scale-90" 
+              onClick={(e) => {
+                e.stopPropagation();
+                if (videoRef.current?.paused) { 
+                  const p = videoRef.current?.play(); 
+                  if (p !== undefined) p.catch(() => {});
+                }
+                else { videoRef.current?.pause(); }
+              }}
+            >
+              {isPlaying ? <Pause size={28} fill="currentColor" /> : <Play size={28} className="ml-1" fill="currentColor" />}
+            </button>
+            {onNext && (
+              <button 
+                disabled={!hasNext}
+                className="text-white hover:text-red-500 transition-colors active:scale-90 disabled:opacity-30 disabled:pointer-events-none" 
+                onClick={(e) => { e.stopPropagation(); onNext(); }}
+                title="Keyingi qism"
+              >
+                <SkipForward size={24} fill="currentColor" />
+              </button>
+            )}
+
+            {/* Volume Control */}
+            <div className="hidden sm:flex items-center gap-2 group/volume">
+              <button
+                className="text-white hover:text-red-500 transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsMuted(!isMuted);
+                }}
+              >
+                {isMuted || volume === 0 ? <VolumeX size={24} /> : <Volume2 size={24} />}
+              </button>
+              <div className="w-0 overflow-hidden group-hover/volume:w-24 transition-all duration-300 opacity-0 group-hover/volume:opacity-100 flex items-center px-2 relative" onClick={(e) => e.stopPropagation()}>
+                 <div className="w-full h-1 bg-white/30 rounded-full cursor-pointer relative flex items-center"
+                      onClick={(e) => {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const v = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                          setVolume(v);
+                          if (v > 0) setIsMuted(false);
+                      }}>
+                     <div className="absolute top-0 bottom-0 left-0 bg-white rounded-full pointer-events-none" style={{ width: `${isMuted ? 0 : volume * 100}%` }} />
+                     <div className="w-3 h-3 bg-white rounded-full absolute pointer-events-none shadow-md" style={{ left: `calc(${isMuted ? 0 : volume * 100}% - 6px)` }} />
+                 </div>
+              </div>
+            </div>
+            
+            {/* Time display */}
+            <div className="text-white opacity-90 text-[13px] font-medium tabular-nums select-none tracking-wide ml-2 hidden sm:block">
+              {Math.floor(currentTime / 3600) > 0 ? `${Math.floor(currentTime / 3600)}:` : ''}{Math.floor((currentTime % 3600) / 60).toString().padStart(2, '0')}:{Math.floor(currentTime % 60).toString().padStart(2, '0')} 
+              <span className="opacity-50 mx-1.5">/</span> 
+              {Math.floor(duration / 3600) > 0 ? `${Math.floor(duration / 3600)}:` : ''}{Math.floor((duration % 3600) / 60).toString().padStart(2, '0')}:{Math.floor(duration % 60).toString().padStart(2, '0')}
+            </div>
+          </div>
+          
+          {/* Right Controls */}
+          <div className="flex items-center gap-4 sm:gap-6 text-white">
+            <div className="text-[13px] font-medium tabular-nums select-none sm:hidden mr-auto opacity-90">
+                {Math.floor(currentTime / 3600) > 0 ? `${Math.floor(currentTime / 3600)}:` : ''}{Math.floor((currentTime % 3600) / 60).toString().padStart(2, '0')}:{Math.floor(currentTime % 60).toString().padStart(2, '0')} 
+            </div>
+
+            <button className="hover:text-red-500 transition-colors hidden sm:block" title="Subtitles" onClick={e => e.stopPropagation()}>
+              <MessageSquare size={22} className="opacity-80" />
+            </button>
+
+            <div className="relative">
+              <button 
+                 className="hover:text-red-500 transition-colors relative"
+                 title="Settings"
+                 onClick={(e) => {
+                   e.stopPropagation();
+                   setShowSettings(!showSettings);
+                 }}
+              >
+                 <Settings className={cn("w-6 h-6 transition-transform", showSettings && "rotate-90 text-red-500")} />
+                 <div className="absolute -top-1.5 -right-1.5 bg-red-600 text-white text-[8px] font-bold px-1 rounded-sm">HD</div>
+              </button>
+              <AnimatePresence>
+                {showSettings && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    transition={{ duration: 0.2 }}
+                    className="absolute bottom-full right-0 mb-4 bg-slate-900/95 backdrop-blur-md shadow-2xl rounded-2xl border border-white/10 w-48 overflow-hidden"
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <div className="p-3 border-b border-white/10 text-xs font-bold uppercase tracking-wider text-white">
+                      Pleybek tezligi
+                    </div>
+                    <div className="flex flex-col p-1">
+                      {[0.5, 0.75, 1, 1.25, 1.5, 2].map(rate => (
+                        <button
+                          key={rate}
+                          className={cn(
+                            "px-4 py-2.5 text-sm text-left rounded-lg transition-colors flex items-center justify-between",
+                            playbackRate === rate ? "bg-red-600/20 text-red-400 font-bold hover:bg-red-600/30" : "text-slate-300 hover:bg-white/5"
+                          )}
+                          onClick={() => {
+                            setPlaybackRate(rate);
+                            setShowSettings(false);
+                          }}
+                        >
+                          {rate === 1 ? 'Normal' : `${rate}x`}
+                          {playbackRate === rate && <Check size={16} />}
+                        </button>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            <button 
+              className="hover:text-red-500 transition-colors hidden sm:block"
+              title="Mini player"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (videoRef.current && document.pictureInPictureEnabled) {
+                  if (document.pictureInPictureElement) {
+                    document.exitPictureInPicture();
+                  } else {
+                    videoRef.current.requestPictureInPicture();
+                  }
+                }
+              }}
+            >
+              <Monitor size={22} className="opacity-80" />
+            </button>
+
+            <button 
+              className="hover:text-red-500 transition-colors active:scale-90"
+              title="Fullscreen"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (videoRef.current) {
+                  if (document.fullscreenElement) {
+                       if (document.exitFullscreen) document.exitFullscreen();
+                       //@ts-ignore
+                       else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+                  } else {
+                       if (videoRef.current.requestFullscreen) videoRef.current.requestFullscreen();
+                       //@ts-ignore
+                       else if (videoRef.current.webkitRequestFullscreen) videoRef.current.webkitRequestFullscreen();
+                  }
+                }
+              }}
+            >
+              <Maximize size={24} />
+            </button>
+          </div>
+        </div>
       </div>
 
 
