@@ -404,7 +404,7 @@ async function setupServer() {
       const now = new Date().toISOString().split('T')[0];
 
       let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
-      xml += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
+      xml += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n`;
 
       // 1. Home
       xml += `  <url>\n    <loc>${baseUrl}/</loc>\n    <lastmod>${now}</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>1.0</priority>\n  </url>\n`;
@@ -435,7 +435,14 @@ async function setupServer() {
           lastMod = now;
         }
         
-        xml += `  <url>\n    <loc>${baseUrl}/anime/${anime.id}</loc>\n    <lastmod>${lastMod}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.8</priority>\n  </url>\n`;
+        xml += `  <url>\n    <loc>${baseUrl}/anime/${anime.id}</loc>\n`;
+        if (anime.posterUrl) {
+          // Add image info for Google image indexing
+          const safeTitle = (anime.title || "Anime").replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          const safeUrl = anime.posterUrl.replace(/&/g, '&amp;');
+          xml += `    <image:image>\n      <image:loc>${safeUrl}</image:loc>\n      <image:title>${safeTitle}</image:title>\n    </image:image>\n`;
+        }
+        xml += `    <lastmod>${lastMod}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.8</priority>\n  </url>\n`;
       }
 
       xml += `</urlset>`;
@@ -648,6 +655,7 @@ async function setupServer() {
     // Regex for /anime/:slug or /watch/:slug/:ep
     const animeMatch = path.match(/^\/(anime|watch)\/([^\/]+)/);
     
+    let addJsonLd = "";
     if (animeMatch) {
       const slug = animeMatch[2];
       try {
@@ -659,9 +667,31 @@ async function setupServer() {
 
         if (anime) {
           title = `${anime.title} - O'zbek tilida sifatli anime tomosha qiling - Animem Uz`;
-          description = (anime.description || "").substring(0, 160);
+          description = (anime.description || "").substring(0, 160).replace(/"/g, '&quot;');
           image = anime.posterUrl || image;
           keywords = `${anime.title}, ${anime.title} o\'zbek tilida, ${anime.title} online ko\'rish, ${anime.category}, anime o\'zbekcha, animem, animem uz`;
+          
+          let dateStr = new Date().toISOString();
+          try {
+             if (anime.createdAt?.toDate) dateStr = anime.createdAt.toDate().toISOString();
+             else if (typeof anime.createdAt === 'number') dateStr = new Date(anime.createdAt).toISOString();
+          } catch(e) {}
+
+          const jsonLdObj = {
+            "@context": "https://schema.org",
+            "@type": "Movie",
+            "name": anime.title,
+            "image": [ image ],
+            "description": description,
+            "dateCreated": dateStr,
+            "genre": anime.category,
+            "url": url,
+            "author": {
+              "@type": "Organization",
+              "name": "Animem Uz"
+            }
+          };
+          addJsonLd = `<script type="application/ld+json">${JSON.stringify(jsonLdObj)}</script>`;
         }
       } catch (e) {
         console.error("SEO injection data fetch error:", e);
@@ -681,7 +711,8 @@ async function setupServer() {
       .replace(/<meta property="twitter:description" content=".*?" \/>/g, `<meta property="twitter:description" content="${description}" />`)
       .replace(/<meta property="twitter:image" content=".*?" \/>/g, `<meta property="twitter:image" content="${image}" />`)
       .replace(/<meta property="twitter:url" content=".*?" \/>/g, `<meta property="twitter:url" content="${url}" />`)
-      .replace(/<meta property="og:site_name" content=".*?" \/>/g, `<meta property="og:site_name" content="Animem Uz" />`);
+      .replace(/<meta property="og:site_name" content=".*?" \/>/g, `<meta property="og:site_name" content="Animem Uz" />`)
+      .replace('</head>', `\n${addJsonLd}\n</head>`);
   };
 
   // Debug route for Telegram Bridge
