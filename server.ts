@@ -30,17 +30,20 @@ console.log(`DEBUG: Project ID from config: ${firebaseConfig.projectId}`);
 // Initialize Firebase Admin with explicit configuration
 if (admin.apps.length === 0) {
   try {
-    const envFirebaseConfig = process.env.FIREBASE_CONFIG ? JSON.parse(process.env.FIREBASE_CONFIG) : {};
-    const projectId = envFirebaseConfig.projectId || firebaseConfig.projectId;
-    
-    console.log(`[Firebase] Initializing Admin for project: ${projectId}`);
-    
-    // Always use the project ID from the config or environment to be safe
-    admin.initializeApp({
-      projectId: projectId
-    });
+    // In AI Studio, we should prioritize the environment's own configuration if available
+    // but fall back to the config file if not.
+    if (process.env.FIREBASE_CONFIG || process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+      console.log("[Firebase] Initializing Admin using environment default credentials");
+      admin.initializeApp();
+    } else {
+      console.log(`[Firebase] Initializing Admin for project: ${firebaseConfig.projectId}`);
+      admin.initializeApp({
+        projectId: firebaseConfig.projectId
+      });
+    }
   } catch (e: any) {
     console.error("[Firebase] Admin Initialization Error:", e.message);
+    try { admin.initializeApp(); } catch (e2) {}
   }
 }
 
@@ -58,11 +61,11 @@ const getDbAdmin = () => {
 
   if (effectiveDbId && effectiveDbId !== "(default)" && effectiveDbId.trim() !== "") {
     try {
-      console.log(`[Firebase] Attempting to use named database: "${effectiveDbId}"`);
+      console.log(`[Firebase] Accessing named database: "${effectiveDbId}" on project "${admin.app().options.projectId || firebaseConfig.projectId}"`);
       _db = getFirestore(effectiveDbId);
       return _db;
     } catch (e: any) {
-      console.warn(`[Firebase] Initial attachment to named database "${effectiveDbId}" failed:`, e.message);
+      console.warn(`[Firebase] Failed to attach to database "${effectiveDbId}":`, e.message);
     }
   }
   
@@ -108,15 +111,17 @@ global.triggerTelegramCheck = async () => {
       if (errorMsg.includes('PERMISSION_DENIED') || errorMsg.includes('NOT_FOUND') || errorCode === 7 || errorCode === 5) {
         console.warn(`[TelegramBridge] Primary database access failed (${errorCode}). Trying default DB fallback...`);
         try {
+          // Use getFirestore() for default database as defined in imports
           const defaultDb = getFirestore();
           notificationsSnap = await defaultDb.collection('public_notifications')
             .where('createdAt', '>=', sevenDaysAgo)
             .where('sentToTelegram', '==', false)
             .get();
           // If this succeeds, update the cached _db for future calls
+          console.log("[TelegramBridge] Fallback success! Using default database.");
           _db = defaultDb;
         } catch (fallbackError: any) {
-          console.warn(`[TelegramBridge] Fallback database access also failed: ${fallbackError.message}`);
+          console.error(`[TelegramBridge] Fallback database access also failed (${fallbackError.code}): ${fallbackError.message}`);
           return; // Silently exit if both fail
         }
       } else {

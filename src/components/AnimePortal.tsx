@@ -54,11 +54,22 @@ interface CommentDoc {
 
 const UniversalVideoPlayer = ({ src, onNext, hasNext, videoLoading, setVideoLoading, openingStart, openingEnd }: any) => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [resolvedSrc, setResolvedSrc] = useState<string | null>(null);
   const [isIframe, setIsIframe] = useState(false);
   const [showSkipIntro, setShowSkipIntro] = useState(false);
   const [isHls, setIsHls] = useState(false);
+  
+  // Custom Controls State
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [volume, setVolume] = useState(1);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showControls, setShowControls] = useState(true);
+  const controlsTimeoutRef = useRef<any>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -82,6 +93,7 @@ const UniversalVideoPlayer = ({ src, onNext, hasNext, videoLoading, setVideoLoad
 
       const lowerSrc = finalSrc.toLowerCase();
       const isDirectExtension = lowerSrc.match(/\.(mp4|mkv|webm|mov|avi|m3u8)$/);
+      const isMoverDirect = lowerSrc.includes('mover.uz') && (lowerSrc.includes('/video/get/') || lowerSrc.includes('.mp4'));
       const isApiStream = lowerSrc.includes('/api/') || lowerSrc.includes('stream') || lowerSrc.includes('/file/');
 
       if (lowerSrc.includes('.m3u8')) setIsHls(true);
@@ -116,7 +128,6 @@ const UniversalVideoPlayer = ({ src, onNext, hasNext, videoLoading, setVideoLoad
                 return;
               }
             } else if (response.status === 404 || response.status === 403) {
-              // Forced iframe fallback if proxy fails
               if (isMounted) {
                  let embedUrl = finalSrc;
                  if (finalSrc.includes('vk.com')) {
@@ -156,7 +167,7 @@ const UniversalVideoPlayer = ({ src, onNext, hasNext, videoLoading, setVideoLoad
         return;
       }
 
-      if (isDirectExtension || isApiStream) {
+      if (isDirectExtension || isApiStream || isMoverDirect) {
         if (isMounted) {
           setResolvedSrc(finalSrc);
           setIsIframe(false);
@@ -185,22 +196,34 @@ const UniversalVideoPlayer = ({ src, onNext, hasNext, videoLoading, setVideoLoad
     };
 
     const handleTimeUpdate = () => {
+      setCurrentTime(video.currentTime);
       if (openingStart && openingEnd) {
         const current = video.currentTime;
         setShowSkipIntro(current >= openingStart && current <= openingEnd);
       }
     };
 
+    const handleLoadedMetadata = () => {
+      setDuration(video.duration);
+    };
+
     video.addEventListener('timeupdate', handleTimeUpdate);
+    video.addEventListener('loadedmetadata', handleLoadedMetadata);
 
     if (isHls || resolvedSrc.includes('.m3u8')) {
       if (Hls.isSupported()) {
-        hls = new Hls({ xhrSetup: (xhr) => { xhr.withCredentials = false; } });
+        hls = new Hls({ 
+          xhrSetup: (xhr) => { xhr.withCredentials = false; },
+          enableWorker: true,
+          lowLatencyMode: true,
+          backBufferLength: 60
+        });
         hls.loadSource(resolvedSrc);
         hls.attachMedia(video);
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           setVideoLoading(false);
           tryPlay();
+          setIsPlaying(true);
         });
         hls.on(Hls.Events.ERROR, (event, data) => {
           if (data.fatal) {
@@ -225,30 +248,107 @@ const UniversalVideoPlayer = ({ src, onNext, hasNext, videoLoading, setVideoLoad
         });
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
         video.src = resolvedSrc;
-        video.onloadeddata = tryPlay;
+        video.onerror = () => setIsIframe(true);
       }
     } else {
       video.src = resolvedSrc;
-      video.onloadeddata = tryPlay;
     }
 
     return () => {
       video.removeEventListener('timeupdate', handleTimeUpdate);
+      video.removeEventListener('loadedmetadata', handleLoadedMetadata);
       if (hls) hls.destroy();
     };
   }, [resolvedSrc, isIframe, isHls, setVideoLoading, openingStart, openingEnd]);
 
-  const skipIntro = () => {
+  // Controls Logic
+  const togglePlay = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (videoRef.current) {
+      if (isPlaying) {
+        videoRef.current.pause();
+      } else {
+        videoRef.current.play();
+      }
+      setIsPlaying(!isPlaying);
+    }
+  };
+
+  const handleProgressChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const time = parseFloat(e.target.value);
+    setCurrentTime(time);
+    if (videoRef.current) videoRef.current.currentTime = time;
+  };
+
+  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value);
+    setVolume(val);
+    if (videoRef.current) {
+      videoRef.current.volume = val;
+      setIsMuted(val === 0);
+    }
+  };
+
+  const toggleMute = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (videoRef.current) {
+      const newMute = !isMuted;
+      setIsMuted(newMute);
+      videoRef.current.muted = newMute;
+      if (!newMute && volume === 0) {
+        setVolume(0.5);
+        videoRef.current.volume = 0.5;
+      }
+    }
+  };
+
+  const toggleFullscreen = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!containerRef.current) return;
+    if (!document.fullscreenElement) {
+      containerRef.current.requestFullscreen();
+      setIsFullscreen(true);
+    } else {
+      document.exitFullscreen();
+      setIsFullscreen(false);
+    }
+  };
+
+  const handleMouseMove = () => {
+    setShowControls(true);
+    if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+    controlsTimeoutRef.current = setTimeout(() => {
+      if (isPlaying) setShowControls(false);
+    }, 3000);
+  };
+
+  const formatTime = (time: number) => {
+    if (isNaN(time)) return "0:00";
+    const minutes = Math.floor(time / 60);
+    const seconds = Math.floor(time % 60);
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  const skipForward = () => {
+    if (videoRef.current) videoRef.current.currentTime += 10;
+  };
+
+  const skipBackward = () => {
+    if (videoRef.current) videoRef.current.currentTime -= 10;
+  };
+
+  const skipIntro = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     if (videoRef.current && openingEnd) {
       videoRef.current.currentTime = openingEnd;
       setShowSkipIntro(false);
     }
   };
 
-  const handleManualSwitch = () => {
+  const handleManualSwitch = (e: React.MouseEvent) => {
+     e.stopPropagation();
      setIsIframe(!isIframe);
      if (!isIframe) {
-        // Switching TO iframe
         const lowerSrc = src.toLowerCase();
         let embed = src;
         if (lowerSrc.includes('vk.com')) {
@@ -257,14 +357,40 @@ const UniversalVideoPlayer = ({ src, onNext, hasNext, videoLoading, setVideoLoad
         }
         setResolvedSrc(embed);
      } else {
-        // Switching TO native
-        setResolvedSrc(null); // trigger re-resolve
+        setResolvedSrc(null);
      }
   };
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return;
+      
+      switch(e.code) {
+        case 'Space':
+          e.preventDefault();
+          togglePlay();
+          break;
+        case 'ArrowRight':
+          skipForward();
+          break;
+        case 'ArrowLeft':
+          skipBackward();
+          break;
+        case 'KeyF':
+          toggleFullscreen();
+          break;
+        case 'KeyM':
+          toggleMute();
+          break;
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isPlaying, isMuted, volume]);
+
   if (isIframe && resolvedSrc) {
     return (
-      <div className="relative w-full h-full bg-black flex items-center justify-center">
+      <div className="relative w-full h-full bg-black flex items-center justify-center group/player">
         <iframe 
           src={resolvedSrc}
           referrerPolicy="no-referrer"
@@ -274,20 +400,25 @@ const UniversalVideoPlayer = ({ src, onNext, hasNext, videoLoading, setVideoLoad
           onLoad={() => setVideoLoading(false)}
         />
         <button 
-          onClick={handleManualSwitch}
-          className="absolute top-4 right-4 z-50 bg-black/60 hover:bg-black/90 text-white px-3 py-1.5 rounded-full text-[10px] font-bold border border-white/20 transition-all flex items-center gap-2"
+          onClick={(e) => handleManualSwitch(e)}
+          className="absolute top-4 right-4 z-50 bg-black/60 hover:bg-black/90 text-white px-4 py-2 rounded-full text-[10px] font-bold border border-white/20 transition-all flex items-center gap-2 opacity-0 group-hover/player:opacity-100"
         >
           <Monitor size={12} />
-          SWITCH TO NATIVE
+          NATIVE PLAYERGA O'TISH
         </button>
       </div>
     );
   }
 
   return (
-    <div className="relative w-full h-full bg-black flex items-center justify-center">
+    <div 
+      ref={containerRef}
+      onMouseMove={handleMouseMove}
+      onClick={() => togglePlay()}
+      className="relative w-full h-full bg-black overflow-hidden cursor-pointer group/player select-none"
+    >
       {error && (
-         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 z-20 text-white p-6 rounded-xl">
+         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 z-[60] text-white p-6 rounded-xl">
             <h3 className="text-red-500 text-xl font-bold mb-2">Xatolik</h3>
             <p className="text-sm opacity-80 text-center mb-4">{error}</p>
          </div>
@@ -297,13 +428,16 @@ const UniversalVideoPlayer = ({ src, onNext, hasNext, videoLoading, setVideoLoad
         ref={videoRef}
         referrerPolicy="no-referrer"
         crossOrigin="anonymous"
-        controls
         playsInline
-        className="w-full h-full object-contain bg-black outline-none z-10"
+        webkit-playsinline="true"
+        disableRemotePlayback
+        className="w-full h-full object-contain outline-none z-10 relative"
         onCanPlay={() => setVideoLoading(false)}
         onLoadStart={() => setVideoLoading(true)}
         onWaiting={() => setVideoLoading(true)}
-        onPlaying={() => setVideoLoading(false)}
+        onPlaying={() => {setVideoLoading(false); setIsPlaying(true);}}
+        onPause={() => setIsPlaying(false)}
+        onPlay={() => setIsPlaying(true)}
         onError={() => {
            console.log("[Video Error] Fallback to iframe mode");
            setIsIframe(true);
@@ -314,14 +448,101 @@ const UniversalVideoPlayer = ({ src, onNext, hasNext, videoLoading, setVideoLoad
         }}
       />
 
-      <div className="absolute top-4 right-4 z-50 flex gap-2">
-         <button 
-            onClick={handleManualSwitch}
-            className="bg-black/60 hover:bg-black/90 text-white px-3 py-1.5 rounded-full text-[10px] font-bold border border-white/20 transition-all flex items-center gap-2"
-          >
-            <Settings size={12} />
-            IFRAME MODE
+      {/* Overlay controls */}
+      <div className={cn(
+        "absolute inset-0 z-50 flex flex-col justify-end bg-gradient-to-t from-black/90 via-transparent to-transparent transition-opacity duration-300 pointer-events-none",
+        showControls || !isPlaying ? "opacity-100" : "opacity-0"
+      )}>
+        
+        {/* Center UI */}
+        <div className="absolute inset-0 flex items-center justify-center gap-12 pointer-events-none">
+          <button onClick={(e) => { e.stopPropagation(); skipBackward(); }} className="p-4 rounded-full bg-black/20 hover:bg-black/40 text-white pointer-events-auto opacity-0 group-hover/player:opacity-100 transition-all scale-90 hover:scale-110">
+            <SkipBack size={32} />
           </button>
+          
+          <div className="p-6 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 text-white pointer-events-none">
+            {isPlaying ? <Pause size={48} fill="currentColor" /> : <Play size={48} fill="currentColor" />}
+          </div>
+
+          <button onClick={(e) => { e.stopPropagation(); skipForward(); }} className="p-4 rounded-full bg-black/20 hover:bg-black/40 text-white pointer-events-auto opacity-0 group-hover/player:opacity-100 transition-all scale-90 hover:scale-110">
+            <SkipForward size={32} />
+          </button>
+        </div>
+
+        {/* Bottom Bar Container */}
+        <div className="p-4 space-y-4 pointer-events-auto" onClick={(e) => e.stopPropagation()}>
+          {/* Progress Bar */}
+          <div className="relative group/progress h-1.5 hover:h-2.5 transition-all cursor-pointer bg-white/20 rounded-full flex items-center">
+             <input 
+               type="range"
+               min={0}
+               max={duration || 100}
+               step={0.1}
+               value={currentTime}
+               onChange={handleProgressChange}
+               className="absolute inset-0 w-full opacity-0 z-10 cursor-pointer"
+             />
+             <div 
+               className="absolute top-0 left-0 h-full bg-red-600 z-[5] rounded-full" 
+               style={{ width: `${(currentTime / (duration || 1)) * 100}%` }}
+             />
+             <div 
+               className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-red-600 rounded-full scale-0 group-hover/progress:scale-100 transition-transform z-[6] border-2 border-white shadow-xl"
+               style={{ left: `calc(${(currentTime / (duration || 1)) * 100}% - 8px)` }}
+             />
+          </div>
+
+          <div className="flex items-center justify-between text-white">
+            <div className="flex items-center gap-6">
+              <button onClick={(e) => togglePlay(e)} className="hover:scale-110 transition-transform focus:outline-none">
+                {isPlaying ? <Pause size={28} fill="currentColor" /> : <Play size={28} fill="currentColor" />}
+              </button>
+              
+              <div className="flex items-center gap-3 group/volume">
+                <button onClick={(e) => toggleMute(e)} className="hover:scale-110 transition-transform focus:outline-none">
+                  {isMuted || volume === 0 ? <VolumeX size={24} /> : <Volume2 size={24} />}
+                </button>
+                <div className="relative w-0 group-hover/volume:w-24 transition-all overflow-hidden h-1.5 bg-white/20 rounded-full flex items-center">
+                  <input 
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={volume}
+                    onChange={handleVolumeChange}
+                    className="w-full h-full cursor-pointer opacity-0 z-10"
+                  />
+                  <div 
+                    className="absolute h-full bg-white z-0 rounded-full" 
+                    style={{ width: `${volume * 100}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="text-[15px] font-black tracking-tighter opacity-90 font-mono flex items-center gap-2">
+                <span className="text-white">{formatTime(currentTime)}</span>
+                <span className="opacity-30">/</span>
+                <span className="opacity-60">{formatTime(duration)}</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-6">
+              <button 
+                onClick={(e) => handleManualSwitch(e)}
+                className="bg-white/10 hover:bg-white/20 px-4 py-1.5 rounded-lg text-[10px] font-black uppercase border border-white/10 flex items-center gap-2 transition-colors"
+              >
+                <Monitor size={12} />
+                IFRAME MODE
+              </button>
+              
+              <div className="h-6 w-[1px] bg-white/10" />
+
+              <button onClick={(e) => toggleFullscreen(e)} className="hover:scale-110 transition-transform focus:outline-none">
+                {isFullscreen ? <Minimize size={26} /> : <Maximize size={26} />}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <AnimatePresence>
@@ -330,10 +551,10 @@ const UniversalVideoPlayer = ({ src, onNext, hasNext, videoLoading, setVideoLoad
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 20 }}
-            onClick={skipIntro}
-            className="absolute bottom-20 right-6 z-50 bg-red-600 hover:bg-red-700 text-white px-6 py-2.5 rounded-lg font-black uppercase tracking-tighter shadow-2xl flex items-center gap-2 group transition-all"
+            onClick={(e) => skipIntro(e)}
+            className="absolute bottom-28 right-8 z-[55] bg-red-600 hover:bg-red-700 text-white px-8 py-3.5 rounded-xl font-black uppercase tracking-tighter shadow-2xl flex items-center gap-3 group transition-all transform hover:scale-105 active:scale-95"
           >
-            <Sparkles size={18} className="animate-pulse" />
+            <Sparkles size={22} className="animate-pulse" />
             SKIP INTRO
           </motion.button>
         )}
@@ -1776,6 +1997,15 @@ export default function AnimePortal({
                           </div>
  
                           <div className="flex items-center gap-1 sm:gap-3 pointer-events-auto mr-12 sm:mr-24">
+                             <a 
+                               href="https://www.profitablecpmratenetwork.com/gcz22c4q?key=04e604ab239b9477df0602f3d8618ee4" 
+                               target="_blank" 
+                               rel="noopener noreferrer" 
+                               className="hidden md:flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600/20 backdrop-blur-xl border border-red-500/30 hover:bg-red-600 transition-all active:scale-95 group/vip shadow-2xl mr-2"
+                             >
+                               <Sparkles size={12} className="text-red-400 group-hover/vip:text-white group-hover/vip:rotate-12 transition-all" />
+                               <span className="text-[10px] font-black uppercase tracking-widest text-white">MAX Quality</span>
+                             </a>
                              <button 
                                disabled={episodes.findIndex(ep => ep.id === currentEpisode?.id) === 0}
                                onClick={handlePrevEpisode}
@@ -1792,24 +2022,24 @@ export default function AnimePortal({
                                <span className="hidden xs:inline text-[8px] sm:text-[10px] font-black uppercase tracking-widest">Next</span>
                                <SkipForward size={10} className="sm:w-3.5 sm:h-3.5 text-white transition-transform group-hover/nav:translate-x-0.5" />
                              </button>
-                          </div>
-                       </div>
-                    </div>
+                           </div>
+                        </div>
+                     </div>
 
-                    <div className="flex-1 flex flex-col overflow-y-auto custom-scrollbar relative min-h-0 bg-[#12121F]">
-                       {/* Video Area - Now Full Width */}
-                       <div className="w-full relative group bg-black shrink-0 aspect-video max-h-[75vh]">
+                     <div className="flex-1 flex flex-col overflow-y-auto custom-scrollbar relative min-h-0 bg-[#12121F]">
+                        {/* Video Area - Improved responsive layout */}
+                       <div className="w-full relative group bg-black shrink-0 overflow-hidden bg-zinc-950">
                           {/* Video Loading State */}
                           {currentEpisode && videoLoading && (
-                            <div className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-[#0B0B14] transition-opacity">
+                            <div className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-black transition-opacity">
                                <div className="w-12 h-12 border-4 border-red-500/20 border-t-red-600 rounded-full animate-spin mb-4" />
                                <div className="flex flex-col items-center gap-1">
-                                  <h4 className="text-sm font-black uppercase tracking-tighter">Yuklanmoqda...</h4>
+                                  <h4 className="text-sm font-black uppercase tracking-tighter text-white">Yuklanmoqda...</h4>
                                </div>
                             </div>
                           )}
 
-                          <div className="w-full h-full shadow-2xl relative">
+                          <div className="w-full aspect-video max-h-[85vh] mx-auto shadow-2xl relative">
                             {currentEpisode ? (
                               <UniversalVideoPlayer 
                                 src={currentEpisode.videoUrl}

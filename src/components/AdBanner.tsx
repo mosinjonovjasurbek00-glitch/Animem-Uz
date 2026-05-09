@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { Sparkles, ChevronRight } from 'lucide-react';
 
 const AdBanner: React.FC = () => {
   const bannerRef = useRef<HTMLDivElement>(null);
@@ -110,6 +111,36 @@ const AdBanner: React.FC = () => {
 
   return (
     <div className="flex flex-col items-center justify-center my-6 gap-6 w-full overflow-hidden">
+      {/* Smart Link CTA */}
+      <div className="w-full max-w-2xl px-4">
+        <a 
+          href="https://www.profitablecpmratenetwork.com/gcz22c4q?key=04e604ab239b9477df0602f3d8618ee4" 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="group relative flex items-center justify-between p-4 bg-gradient-to-r from-red-600 to-red-900 rounded-2xl overflow-hidden shadow-2xl hover:scale-[1.01] transition-all duration-300 border border-white/10"
+        >
+          <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-20 pointer-events-none" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+          
+          <div className="relative z-10 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center backdrop-blur-md border border-white/20 group-hover:rotate-12 transition-transform duration-500">
+              <Sparkles className="text-white w-6 h-6 animate-pulse" />
+            </div>
+            <div>
+              <h3 className="text-white font-black uppercase tracking-tighter text-lg leading-tight">Yangi Animelar & Premyeralar</h3>
+              <p className="text-red-100/70 text-xs font-bold uppercase tracking-widest">VIP Kanalga a'zo bo'ling</p>
+            </div>
+          </div>
+
+          <div className="relative z-10 flex items-center gap-2 bg-white/10 px-4 py-2 rounded-full backdrop-blur-md border border-white/20 group-hover:bg-white/20 transition-colors">
+            <span className="text-white text-xs font-black uppercase tracking-widest">Ko'rish</span>
+            <ChevronRight className="text-white w-4 h-4 group-hover:translate-x-1 transition-transform" />
+          </div>
+
+          <div className="absolute -right-8 -top-8 w-24 h-24 bg-white/10 rounded-full blur-3xl" />
+        </a>
+      </div>
+
       <div className="flex flex-wrap flex-row items-center justify-center gap-6 w-full">
         {/* Native Banner */}
         <div className="flex flex-col items-center">

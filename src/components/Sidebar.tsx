@@ -17,11 +17,16 @@ export default function Sidebar({ activeTab, setActiveTab, isAdmin }: SidebarPro
     { id: 'gallery', label: 'Bosh sahifa', icon: Home, path: '/' },
     { id: 'anime', label: 'Anime', icon: Gallery, path: '/' },
     { id: 'news', label: 'Yangiliklar', icon: Sparkles, path: '/news' },
+    { id: 'premium', label: 'VIP (Bonus)', icon: Sparkles, path: 'https://www.profitablecpmratenetwork.com/gcz22c4q?key=04e604ab239b9477df0602f3d8618ee4', external: true },
     { id: 'saved', label: 'Saqlanganlar', icon: Heart, path: '/watchlist' },
     { id: 'chat', label: 'Chat', icon: MessageSquare, path: '/chat' },
   ];
 
   const handleNav = (item: any) => {
+    if (item.external) {
+      window.open(item.path, '_blank');
+      return;
+    }
     setActiveTab(item.id);
     navigate(item.path);
   };
