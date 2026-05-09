@@ -52,550 +52,298 @@ interface CommentDoc {
   createdAt: any;
 }
 
-const UniversalVideoPlayer = ({ src, videoRef, videoLoading, setVideoLoading, setCurrentTime, onNext, onPrev, hasNext, hasPrev }: any) => {
-  const [loadError, setLoadError] = useState(false);
+const UniversalVideoPlayer = ({ src, onNext, hasNext, videoLoading, setVideoLoading, openingStart, openingEnd }: any) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [error, setError] = useState<string | null>(null);
   const [resolvedSrc, setResolvedSrc] = useState<string | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTimeState] = useState(0);
-  const [duration, setDuration] = useState(0);
   const [isIframe, setIsIframe] = useState(false);
-  const [showControls, setShowControls] = useState(true);
-  const [volume, setVolume] = useState(1);
-  const [isMuted, setIsMuted] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  const [playbackRate, setPlaybackRate] = useState(1);
-  const [centerIcon, setCenterIcon] = useState<'play' | 'pause' | 'forward' | 'backward' | null>(null);
-  const controlsTimer = useRef<any>(null);
-  const centerIconTimer = useRef<any>(null);
-
-  const toggleControls = () => {
-    setShowControls(true);
-    if (controlsTimer.current) clearTimeout(controlsTimer.current);
-    controlsTimer.current = setTimeout(() => {
-      if (isPlaying && !showSettings) setShowControls(false);
-    }, 3000);
-  };
-
-  const showCenterIcon = (type: 'play' | 'pause' | 'forward' | 'backward') => {
-    setCenterIcon(type);
-    if (centerIconTimer.current) clearTimeout(centerIconTimer.current);
-    centerIconTimer.current = setTimeout(() => setCenterIcon(null), 500);
-  };
-
-  useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.volume = volume;
-      videoRef.current.muted = isMuted;
-      videoRef.current.playbackRate = playbackRate;
-    }
-  }, [volume, isMuted, playbackRate]);
-
-  useEffect(() => {
-    toggleControls();
-    return () => { if (controlsTimer.current) clearTimeout(controlsTimer.current); };
-  }, [isPlaying]);
+  const [showSkipIntro, setShowSkipIntro] = useState(false);
+  const [isHls, setIsHls] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
     setIsIframe(false);
     setResolvedSrc(null);
-    setLoadError(false);
-    
+    setError(null);
+    setIsHls(false);
+    setVideoLoading(true);
+
     const resolveSrc = async () => {
-      if (!src) return;
-      
-      let finalSrc = src;
+      let finalSrc = src.trim();
 
-      // Wrap known services into our proxies first
-      if (src.includes('t.me/') || src.includes('telegram.org')) {
-        finalSrc = `/api/telegram/stream?url=${encodeURIComponent(src)}`;
-      } else if (src.includes('discordapp.com') || src.includes('discordapp.net')) {
-        finalSrc = `/api/discord/stream?url=${encodeURIComponent(src)}`;
-      } else if (src.includes('vk.com/video') || src.includes('vkvideo.ru')) {
-        finalSrc = `/api/vk/stream?url=${encodeURIComponent(src)}`;
-      } else if (src.includes('ok.ru/')) {
-        // Special case for OK.ru - we often want the iframe directly
-        const proxyUrl = `/api/okru/stream?url=${encodeURIComponent(src)}`;
-        setResolvedSrc(proxyUrl);
-        setIsIframe(true);
-        console.log("[Video Player] OK.ru detected, using proxy:", proxyUrl);
-        return;
+      if (finalSrc.includes('<iframe')) {
+        const srcMatch = finalSrc.match(/src=["']([^"']+)["']/);
+        if (srcMatch) finalSrc = srcMatch[1];
       }
 
-      // Check if it's already an embed/iframe URL
-      const embedPatterns = ['/embed/', 'player.html', 'sharing', 'watch?v=', 'youtube.com', 'youtu.be', 'vimeo.com'];
-      const isLikelyEmbed = embedPatterns.some(p => finalSrc.includes(p)) && !finalSrc.includes('/api/');
-
-      // If it's a proxy link, we need to resolve it on the server
-      const redirectingProxies = ['/api/rumble/stream', '/api/vk/stream', '/api/dtube/stream', '/api/dailymotion/stream', '/api/telegram/stream', '/api/discord/stream', '/api/okru/stream'];
-      const isProxy = redirectingProxies.some(p => finalSrc.includes(p));
-
-      if (!isProxy) {
-        if (isLikelyEmbed) {
-          setIsIframe(true);
-        }
-        setResolvedSrc(finalSrc);
-        return;
+      if (finalSrc.startsWith('//')) {
+        finalSrc = 'https:' + finalSrc;
       }
 
-      setVideoLoading(true);
-      setLoadError(false);
+      const lowerSrc = finalSrc.toLowerCase();
+      const isDirectExtension = lowerSrc.match(/\.(mp4|mkv|webm|mov|avi|m3u8)$/);
+      const isApiStream = lowerSrc.includes('/api/') || lowerSrc.includes('stream') || lowerSrc.includes('/file/');
+
+      if (lowerSrc.includes('.m3u8')) setIsHls(true);
       
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
-      
-      try {
-        const fetchUrl = `${finalSrc}${finalSrc.includes('?') ? '&' : '?'}format=json`;
-        const response = await fetch(fetchUrl, { signal: controller.signal });
-        clearTimeout(timeoutId);
+      const proxyMap = {
+        't.me/': '/api/telegram/stream',
+        'telegram': '/api/telegram/stream',
+        'vk.com/video': '/api/vk/stream',
+        'vkvideo.ru': '/api/vk/stream',
+        'd.tube/': '/api/dtube/stream',
+        'dtube.video': '/api/dtube/stream',
+        'discordapp.com': '/api/discord/stream',
+        'discordapp.net': '/api/discord/stream',
+        'ok.ru/': '/api/okru/stream'
+      };
+
+      const proxyEntry = Object.entries(proxyMap).find(([key]) => finalSrc.includes(key));
+
+      if (proxyEntry && !isApiStream) {
+        const proxyUrl = `${proxyEntry[1]}?url=${encodeURIComponent(finalSrc)}`;
         
-        if (!response.ok) {
-           throw new Error(`Server returned ${response.status}`);
-        }
-
-        const data = await response.json();
-        if (isMounted) {
-          if (data.url) {
-            setResolvedSrc(data.url);
-            setIsIframe(false); // If we got a direct URL, it's definitely not an iframe
-          } else {
-            // Extraction failed, fallback to original or proxy as redirect
-            setResolvedSrc(finalSrc);
-            // If it's NOT a stream, maybe try as iframe
-            if (finalSrc.includes('/api/vk/stream') || finalSrc.includes('/api/okru/stream')) {
-               // Keep as is, it'll redirect or we can try iframe
+        if (proxyUrl.includes('/api/vk') || proxyUrl.includes('/api/okru') || proxyUrl.includes('/api/rumble')) {
+          try {
+            const fetchUrl = `${proxyUrl}${proxyUrl.includes('?') ? '&' : '?'}format=json`;
+            const response = await fetch(fetchUrl);
+            if (response.ok) {
+              const data = await response.json();
+              if (isMounted && data.url) {
+                setResolvedSrc(data.url);
+                setIsIframe(false);
+                if (data.url.includes('.m3u8')) setIsHls(true);
+                return;
+              }
+            } else if (response.status === 404 || response.status === 403) {
+              // Forced iframe fallback if proxy fails
+              if (isMounted) {
+                 let embedUrl = finalSrc;
+                 if (finalSrc.includes('vk.com')) {
+                    const vkMatch = finalSrc.match(/video(-?\d+)_(\d+)/);
+                    if (vkMatch) embedUrl = `https://vk.com/video_ext.php?oid=${vkMatch[1]}&id=${vkMatch[2]}&hash=0`;
+                 }
+                 setResolvedSrc(embedUrl);
+                 setIsIframe(true);
+              }
+              return;
             }
+          } catch (e: any) {
+            console.error("Proxy fetch error:", e?.message || e);
           }
         }
-      } catch (err: any) {
-        clearTimeout(timeoutId);
+        
         if (isMounted) {
-            setResolvedSrc(finalSrc);
+          setResolvedSrc(proxyUrl);
+          setIsIframe(false);
         }
-      } finally {
-        if (isMounted) setVideoLoading(false);
+        return;
+      }
+
+      if (lowerSrc.includes('youtube.com') || lowerSrc.includes('youtu.be')) {
+        const embedUrl = finalSrc.replace('watch?v=', 'embed/');
+        if (isMounted) {
+          setResolvedSrc(embedUrl);
+          setIsIframe(true);
+        }
+        return;
+      } else if (lowerSrc.includes('ok.ru/video/')) {
+        const embedUrl = finalSrc.replace('ok.ru/video/', 'ok.ru/videoembed/');
+        if (isMounted) {
+          setResolvedSrc(embedUrl);
+          setIsIframe(true);
+        }
+        return;
+      }
+
+      if (isDirectExtension || isApiStream) {
+        if (isMounted) {
+          setResolvedSrc(finalSrc);
+          setIsIframe(false);
+        }
+      } else {
+        if (isMounted) {
+          setResolvedSrc(finalSrc);
+          setIsIframe(true);
+        }
       }
     };
 
     resolveSrc();
     return () => { isMounted = false; };
-  }, [src]);
+  }, [src, setVideoLoading]);
 
   useEffect(() => {
+    let hls: Hls | null = null;
     const video = videoRef.current;
     if (!video || !resolvedSrc || isIframe) return;
 
-    setLoadError(false);
-    setVideoLoading(true);
+    setError(null);
 
-    let hls: any = null;
+    const tryPlay = () => {
+      video.play().catch(e => console.warn("Autoplay block:", e.message));
+    };
 
-    const initVideo = () => {
-      if (resolvedSrc.includes('.m3u8')) {
-        if (Hls.isSupported()) {
-          if (hls) hls.destroy();
-          hls = new Hls();
-          
-          hls.on(Hls.Events.ERROR, function(event: any, data: any) {
-            if (data.fatal) {
-              console.error("[HLS] Fatal error:", data);
-              // If HLS fails, we might still want to try native or iframe
-              switch (data.type) {
-                case Hls.ErrorTypes.NETWORK_ERROR:
-                  hls.startLoad();
-                  break;
-                case Hls.ErrorTypes.MEDIA_ERROR:
-                  hls.recoverMediaError();
-                  break;
-                default:
-                  setLoadError(true);
-                  setVideoLoading(false);
-                  hls.destroy();
-                  break;
-              }
-            }
-          });
-
-          hls.on(Hls.Events.MANIFEST_PARSED, () => {
-            setVideoLoading(false);
-          });
-
-          hls.loadSource(resolvedSrc);
-          hls.attachMedia(video);
-        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-          video.src = resolvedSrc;
-        }
-      } else {
-        video.src = resolvedSrc;
+    const handleTimeUpdate = () => {
+      if (openingStart && openingEnd) {
+        const current = video.currentTime;
+        setShowSkipIntro(current >= openingStart && current <= openingEnd);
       }
     };
 
-    initVideo();
+    video.addEventListener('timeupdate', handleTimeUpdate);
+
+    if (isHls || resolvedSrc.includes('.m3u8')) {
+      if (Hls.isSupported()) {
+        hls = new Hls({ xhrSetup: (xhr) => { xhr.withCredentials = false; } });
+        hls.loadSource(resolvedSrc);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          setVideoLoading(false);
+          tryPlay();
+        });
+        hls.on(Hls.Events.ERROR, (event, data) => {
+          if (data.fatal) {
+            console.warn("[HLS Fatal Error]", data.type);
+            switch(data.type) {
+              case Hls.ErrorTypes.NETWORK_ERROR:
+                if (data.response?.code === 403 || data.response?.code === 404) {
+                  setIsIframe(true);
+                } else {
+                  hls!.startLoad();
+                }
+                break;
+              case Hls.ErrorTypes.MEDIA_ERROR:
+                hls!.recoverMediaError();
+                break;
+              default:
+                setIsIframe(true);
+                hls!.destroy();
+                break;
+            }
+          }
+        });
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = resolvedSrc;
+        video.onloadeddata = tryPlay;
+      }
+    } else {
+      video.src = resolvedSrc;
+      video.onloadeddata = tryPlay;
+    }
 
     return () => {
+      video.removeEventListener('timeupdate', handleTimeUpdate);
       if (hls) hls.destroy();
     };
-  }, [src, resolvedSrc, isIframe, videoRef]);
+  }, [resolvedSrc, isIframe, isHls, setVideoLoading, openingStart, openingEnd]);
+
+  const skipIntro = () => {
+    if (videoRef.current && openingEnd) {
+      videoRef.current.currentTime = openingEnd;
+      setShowSkipIntro(false);
+    }
+  };
+
+  const handleManualSwitch = () => {
+     setIsIframe(!isIframe);
+     if (!isIframe) {
+        // Switching TO iframe
+        const lowerSrc = src.toLowerCase();
+        let embed = src;
+        if (lowerSrc.includes('vk.com')) {
+           const match = src.match(/video(-?\d+)_(\d+)/);
+           if (match) embed = `https://vk.com/video_ext.php?oid=${match[1]}&id=${match[2]}&hash=0`;
+        }
+        setResolvedSrc(embed);
+     } else {
+        // Switching TO native
+        setResolvedSrc(null); // trigger re-resolve
+     }
+  };
 
   if (isIframe && resolvedSrc) {
     return (
       <div className="relative w-full h-full bg-black flex items-center justify-center">
         <iframe 
-          src={resolvedSrc.includes('?') ? `${resolvedSrc}&autoplay=1` : `${resolvedSrc}?autoplay=1`}
-          className="w-full h-full border-none z-10"
+          src={resolvedSrc}
+          referrerPolicy="no-referrer"
+          className="w-full h-full border-none z-10 bg-black"
           allowFullScreen
-          allow="autoplay; fullscreen; picture-in-picture"
+          allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
           onLoad={() => setVideoLoading(false)}
         />
-        {videoLoading && (
-          <div className="absolute inset-0 z-20 bg-black flex items-center justify-center">
-            <div className="w-12 h-12 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin"></div>
-          </div>
-        )}
+        <button 
+          onClick={handleManualSwitch}
+          className="absolute top-4 right-4 z-50 bg-black/60 hover:bg-black/90 text-white px-3 py-1.5 rounded-full text-[10px] font-bold border border-white/20 transition-all flex items-center gap-2"
+        >
+          <Monitor size={12} />
+          SWITCH TO NATIVE
+        </button>
       </div>
     );
   }
 
   return (
-    <div 
-      className="relative w-full h-full bg-black flex items-center justify-center group overflow-hidden"
-      onClick={toggleControls}
-      onMouseMove={toggleControls}
-      onMouseLeave={() => { if (isPlaying) setShowControls(false); }}
-    >
-      <video 
+    <div className="relative w-full h-full bg-black flex items-center justify-center">
+      {error && (
+         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 z-20 text-white p-6 rounded-xl">
+            <h3 className="text-red-500 text-xl font-bold mb-2">Xatolik</h3>
+            <p className="text-sm opacity-80 text-center mb-4">{error}</p>
+         </div>
+      )}
+      
+      <video
         ref={videoRef}
-        className="w-full h-full object-contain outline-none focus:outline-none bg-black" 
-        key={resolvedSrc || src}
-        playsInline 
-        autoPlay
-        onPlay={() => {
-          setIsPlaying(true);
-          toggleControls();
-        }}
-        onPause={() => {
-          setIsPlaying(false);
-          setShowControls(true);
-        }}
-        onLoadedMetadata={(e) => {
-          const video = e.currentTarget;
-          setDuration(video.duration);
-          
-          // Use safe play logic
-          const playPromise = video.play();
-          if (playPromise !== undefined) {
-            playPromise.catch(err => {
-              if (err.name !== 'AbortError') {
-                console.warn("Autoplay failed:", err);
-              }
-            });
-          }
-        }}
-        onTimeUpdate={(e) => {
-          const video = e.currentTarget;
-          if (typeof setCurrentTime === 'function') setCurrentTime(video.currentTime);
-          setCurrentTimeState(video.currentTime);
-        }}
+        referrerPolicy="no-referrer"
+        crossOrigin="anonymous"
+        controls
+        playsInline
+        className="w-full h-full object-contain bg-black outline-none z-10"
         onCanPlay={() => setVideoLoading(false)}
-        onLoadedData={() => setVideoLoading(false)}
+        onLoadStart={() => setVideoLoading(true)}
         onWaiting={() => setVideoLoading(true)}
         onPlaying={() => setVideoLoading(false)}
-        onEnded={() => {
-          if (onNext && hasNext) {
-            onNext();
-          }
-        }}
-        onClick={() => {
-          if (videoRef.current) {
-            if (videoRef.current.paused) {
-              const p = videoRef.current.play();
-              if (p !== undefined) p.catch(() => {});
-              showCenterIcon('play');
-            } else {
-              videoRef.current.pause();
-              showCenterIcon('pause');
-            }
-          }
-        }}
-        onDoubleClick={(e) => {
-          // Double click to enter fullscreen or seek
-          const rect = e.currentTarget.getBoundingClientRect();
-          const clickX = e.clientX - rect.left;
-          if (clickX > rect.width * 0.7) {
-            if (videoRef.current) videoRef.current.currentTime = Math.min(videoRef.current.currentTime + 10, duration);
-            showCenterIcon('forward');
-          } else if (clickX < rect.width * 0.3) {
-            if (videoRef.current) videoRef.current.currentTime = Math.max(videoRef.current.currentTime - 10, 0);
-            showCenterIcon('backward');
-          } else {
-            if (videoRef.current) {
-              if (videoRef.current.requestFullscreen) videoRef.current.requestFullscreen();
-              else if ((videoRef.current as any).webkitRequestFullscreen) (videoRef.current as any).webkitRequestFullscreen();
-            }
-          }
-        }}
         onError={() => {
-          console.error("Video playback error for src:", resolvedSrc || src);
-          // Try to fallback to iframe as a last resort if it looks like a webpage
-          if (resolvedSrc && !isIframe) {
-             const lowerSrc = resolvedSrc.toLowerCase();
-             if (!lowerSrc.match(/\.(mp4|m3u8|webm|ogg|mkv|mov|avi)$/) || lowerSrc.includes('player') || lowerSrc.includes('embed')) {
-               console.log("[Player] Error playing as video, attempting iframe fallback");
-               setIsIframe(true);
-             } else {
-               setVideoLoading(false);
-               setLoadError(true);
-             }
-          } else {
-             setVideoLoading(false);
-             setLoadError(true);
-          }
+           console.log("[Video Error] Fallback to iframe mode");
+           setIsIframe(true);
+           setVideoLoading(false);
+        }}
+        onEnded={() => {
+          if (hasNext && onNext) onNext();
         }}
       />
-      
-      {/* Center Action Icon */}
-      <AnimatePresence>
-        {centerIcon && (
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.5 }}
-            animate={{ opacity: 1, scale: 1.2 }}
-            exit={{ opacity: 0, scale: 1.5 }}
-            transition={{ duration: 0.4, ease: "easeOut" }}
-            className="absolute inset-0 flex items-center justify-center pointer-events-none z-[100]"
+
+      <div className="absolute top-4 right-4 z-50 flex gap-2">
+         <button 
+            onClick={handleManualSwitch}
+            className="bg-black/60 hover:bg-black/90 text-white px-3 py-1.5 rounded-full text-[10px] font-bold border border-white/20 transition-all flex items-center gap-2"
           >
-            <div className="w-20 h-20 bg-black/50 rounded-full flex items-center justify-center backdrop-blur-sm text-white">
-              {centerIcon === 'play' && <Play size={40} className="ml-2" fill="currentColor" />}
-              {centerIcon === 'pause' && <Pause size={40} fill="currentColor" />}
-              {centerIcon === 'forward' && <div className="flex flex-col items-center"><SkipForward size={30} fill="currentColor" /><span className="text-[10px] font-bold mt-1">+10s</span></div>}
-              {centerIcon === 'backward' && <div className="flex flex-col items-center"><SkipBack size={30} fill="currentColor" /><span className="text-[10px] font-bold mt-1">-10s</span></div>}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Controls Container */}
-      <div className={cn(
-        "absolute bottom-0 left-0 right-0 px-4 sm:px-8 pb-4 sm:pb-6 pt-24 bg-gradient-to-t from-black/90 via-black/60 to-transparent transition-all duration-300 flex flex-col justify-end z-[200]",
-        showControls || !isPlaying ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
-      )}>
-        {/* Progress Bar */}
-        <div 
-          className="w-full h-1.5 sm:h-2 bg-white/20 rounded-full cursor-pointer relative group/progress hover:h-2.5 sm:hover:h-3 transition-all mb-4" 
-          onClick={(e) => {
-            e.stopPropagation();
-            const rect = e.currentTarget.getBoundingClientRect();
-            const percent = (e.clientX - rect.left) / rect.width;
-            if (videoRef.current && duration) videoRef.current.currentTime = Math.max(0, Math.min(percent * duration, duration));
-          }}
-          onMouseMove={(e) => {
-            // Can add thumbnail preview here in future
-          }}
-        >
-          {/* Buffered */}
-          <div className="absolute top-0 bottom-0 left-0 bg-white/30 rounded-full pointer-events-none transition-all duration-300" style={{ width: '0%' }} ref={(r) => {
-             if (r && videoRef.current && videoRef.current.buffered.length > 0) {
-                const b = videoRef.current.buffered.end(videoRef.current.buffered.length - 1);
-                r.style.width = `${(b / (duration || 1)) * 100}%`;
-             }
-          }} />
-          <div className="absolute top-0 bottom-0 left-0 bg-red-600 rounded-full flex items-center justify-end" style={{ width: `${(currentTime / (duration || 1)) * 100}%` }}>
-            <div className="w-4 h-4 sm:w-5 sm:h-5 bg-red-600 rounded-full shadow-lg scale-0 group-hover/progress:scale-100 transition-transform absolute -right-2 sm:-right-2.5 flex items-center justify-center">
-              <div className="w-1.5 h-1.5 bg-white rounded-full" />
-            </div>
-          </div>
-        </div>
-
-        {/* Buttons Row */}
-        <div className="flex items-center justify-between w-full">
-          {/* Left Controls */}
-          <div className="flex items-center gap-4 sm:gap-6">
-            <button 
-              className="text-white hover:text-red-500 transition-colors active:scale-90" 
-              onClick={(e) => {
-                e.stopPropagation();
-                if (videoRef.current?.paused) { 
-                  const p = videoRef.current?.play(); 
-                  if (p !== undefined) p.catch(() => {});
-                }
-                else { videoRef.current?.pause(); }
-              }}
-            >
-              {isPlaying ? <Pause size={28} fill="currentColor" /> : <Play size={28} className="ml-1" fill="currentColor" />}
-            </button>
-            {onNext && (
-              <button 
-                disabled={!hasNext}
-                className="text-white hover:text-red-500 transition-colors active:scale-90 disabled:opacity-30 disabled:pointer-events-none" 
-                onClick={(e) => { e.stopPropagation(); onNext(); }}
-                title="Keyingi qism"
-              >
-                <SkipForward size={24} fill="currentColor" />
-              </button>
-            )}
-
-            {/* Volume Control */}
-            <div className="hidden sm:flex items-center gap-2 group/volume">
-              <button
-                className="text-white hover:text-red-500 transition-colors"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsMuted(!isMuted);
-                }}
-              >
-                {isMuted || volume === 0 ? <VolumeX size={24} /> : <Volume2 size={24} />}
-              </button>
-              <div className="w-0 overflow-hidden group-hover/volume:w-24 transition-all duration-300 opacity-0 group-hover/volume:opacity-100 flex items-center px-2 relative" onClick={(e) => e.stopPropagation()}>
-                 <div className="w-full h-1 bg-white/30 rounded-full cursor-pointer relative flex items-center"
-                      onClick={(e) => {
-                          const rect = e.currentTarget.getBoundingClientRect();
-                          const v = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-                          setVolume(v);
-                          if (v > 0) setIsMuted(false);
-                      }}>
-                     <div className="absolute top-0 bottom-0 left-0 bg-white rounded-full pointer-events-none" style={{ width: `${isMuted ? 0 : volume * 100}%` }} />
-                     <div className="w-3 h-3 bg-white rounded-full absolute pointer-events-none shadow-md" style={{ left: `calc(${isMuted ? 0 : volume * 100}% - 6px)` }} />
-                 </div>
-              </div>
-            </div>
-            
-            {/* Time display */}
-            <div className="text-white opacity-90 text-[13px] font-medium tabular-nums select-none tracking-wide ml-2 hidden sm:block">
-              {Math.floor(currentTime / 3600) > 0 ? `${Math.floor(currentTime / 3600)}:` : ''}{Math.floor((currentTime % 3600) / 60).toString().padStart(2, '0')}:{Math.floor(currentTime % 60).toString().padStart(2, '0')} 
-              <span className="opacity-50 mx-1.5">/</span> 
-              {Math.floor(duration / 3600) > 0 ? `${Math.floor(duration / 3600)}:` : ''}{Math.floor((duration % 3600) / 60).toString().padStart(2, '0')}:{Math.floor(duration % 60).toString().padStart(2, '0')}
-            </div>
-          </div>
-          
-          {/* Right Controls */}
-          <div className="flex items-center gap-4 sm:gap-6 text-white">
-            <div className="text-[13px] font-medium tabular-nums select-none sm:hidden mr-auto opacity-90">
-                {Math.floor(currentTime / 3600) > 0 ? `${Math.floor(currentTime / 3600)}:` : ''}{Math.floor((currentTime % 3600) / 60).toString().padStart(2, '0')}:{Math.floor(currentTime % 60).toString().padStart(2, '0')} 
-            </div>
-
-            <button className="hover:text-red-500 transition-colors hidden sm:block" title="Subtitles" onClick={e => e.stopPropagation()}>
-              <MessageSquare size={22} className="opacity-80" />
-            </button>
-
-            <div className="relative">
-              <button 
-                 className="hover:text-red-500 transition-colors relative"
-                 title="Settings"
-                 onClick={(e) => {
-                   e.stopPropagation();
-                   setShowSettings(!showSettings);
-                 }}
-              >
-                 <Settings className={cn("w-6 h-6 transition-transform", showSettings && "rotate-90 text-red-500")} />
-                 <div className="absolute -top-1.5 -right-1.5 bg-red-600 text-white text-[8px] font-bold px-1 rounded-sm">HD</div>
-              </button>
-              <AnimatePresence>
-                {showSettings && (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                    transition={{ duration: 0.2 }}
-                    className="absolute bottom-full right-0 mb-4 bg-slate-900/95 backdrop-blur-md shadow-2xl rounded-2xl border border-white/10 w-48 overflow-hidden"
-                    onClick={e => e.stopPropagation()}
-                  >
-                    <div className="p-3 border-b border-white/10 text-xs font-bold uppercase tracking-wider text-white">
-                      Pleybek tezligi
-                    </div>
-                    <div className="flex flex-col p-1">
-                      {[0.5, 0.75, 1, 1.25, 1.5, 2].map(rate => (
-                        <button
-                          key={rate}
-                          className={cn(
-                            "px-4 py-2.5 text-sm text-left rounded-lg transition-colors flex items-center justify-between",
-                            playbackRate === rate ? "bg-red-600/20 text-red-400 font-bold hover:bg-red-600/30" : "text-slate-300 hover:bg-white/5"
-                          )}
-                          onClick={() => {
-                            setPlaybackRate(rate);
-                            setShowSettings(false);
-                          }}
-                        >
-                          {rate === 1 ? 'Normal' : `${rate}x`}
-                          {playbackRate === rate && <Check size={16} />}
-                        </button>
-                      ))}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-
-            <button 
-              className="hover:text-red-500 transition-colors hidden sm:block"
-              title="Mini player"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (videoRef.current && document.pictureInPictureEnabled) {
-                  if (document.pictureInPictureElement) {
-                    document.exitPictureInPicture();
-                  } else {
-                    videoRef.current.requestPictureInPicture();
-                  }
-                }
-              }}
-            >
-              <Monitor size={22} className="opacity-80" />
-            </button>
-
-            <button 
-              className="hover:text-red-500 transition-colors active:scale-90"
-              title="Fullscreen"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (videoRef.current) {
-                  if (document.fullscreenElement) {
-                       if (document.exitFullscreen) document.exitFullscreen();
-                       //@ts-ignore
-                       else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
-                  } else {
-                       if (videoRef.current.requestFullscreen) videoRef.current.requestFullscreen();
-                       //@ts-ignore
-                       else if (videoRef.current.webkitRequestFullscreen) videoRef.current.webkitRequestFullscreen();
-                  }
-                }
-              }}
-            >
-              <Maximize size={24} />
-            </button>
-          </div>
-        </div>
+            <Settings size={12} />
+            IFRAME MODE
+          </button>
       </div>
 
-
-      {/* Error Overlay */}
       <AnimatePresence>
-        {loadError && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-[150] p-6 text-center">
-            <div className="max-w-md">
-              <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4 border border-red-500/30">
-                <XCircle className="w-10 h-10 text-red-500" />
-              </div>
-              <h3 className="text-xl font-black uppercase tracking-tighter text-white mb-2">Video format supported emas</h3>
-              <p className="text-white/60 text-[10px] font-black uppercase tracking-widest mb-6 leading-relaxed">
-                Bu video manzilini to'g'ridan-to'g'ri ochishda xatolik yuz berdi. Iltimos, boshqa epizodni kuring yoki sahifani yangilang.
-              </p>
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-                <button 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    window.location.reload();
-                  }}
-                  className="w-full sm:w-auto px-10 py-3 bg-red-600 hover:bg-red-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-xl shadow-red-600/20"
-                >
-                  Sahifani yangilash
-                </button>
-              </div>
-            </div>
-          </div>
+        {showSkipIntro && (
+          <motion.button
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 20 }}
+            onClick={skipIntro}
+            className="absolute bottom-20 right-6 z-50 bg-red-600 hover:bg-red-700 text-white px-6 py-2.5 rounded-lg font-black uppercase tracking-tighter shadow-2xl flex items-center gap-2 group transition-all"
+          >
+            <Sparkles size={18} className="animate-pulse" />
+            SKIP INTRO
+          </motion.button>
         )}
       </AnimatePresence>
     </div>
   );
 };
+
+
+
 
 import { Language, useTranslation } from '../i18n';
 
@@ -644,7 +392,6 @@ export default function AnimePortal({
   const [currentEpisode, setCurrentEpisode] = useState<EpisodeDoc | null>(null);
   const [videoLoading, setVideoLoading] = useState(false);
   const [forceLegacy, setForceLegacy] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
   const [comments, setComments] = useState<CommentDoc[]>([]);
   const [newComment, setNewComment] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
@@ -716,10 +463,12 @@ export default function AnimePortal({
 
   // Function to save watching progress
   useEffect(() => {
-    if (!user || !selectedAnime || !currentEpisode || currentTime === 0) return;
+    if (!user || !selectedAnime || !currentEpisode) return;
 
     // Save every 10 seconds or when significantly changed
     const interval = setInterval(async () => {
+      const currentProgress = videoRef.current?.currentTime || 0;
+      if (currentProgress < 10) return; // avoid saving 0s
       try {
         const historyId = `${user.uid}_${selectedAnime.id}`;
         await setDoc(doc(db, 'history', historyId), {
@@ -727,7 +476,7 @@ export default function AnimePortal({
           animeId: selectedAnime.id,
           episodeId: currentEpisode.id,
           episodeNumber: currentEpisode.episodeNumber,
-          progress: currentTime,
+          progress: currentProgress,
           animeTitle: selectedAnime.title,
           posterUrl: selectedAnime.posterUrl,
           updatedAt: serverTimestamp()
@@ -738,7 +487,7 @@ export default function AnimePortal({
     }, 10000);
 
     return () => clearInterval(interval);
-  }, [user, selectedAnime, currentEpisode, currentTime]);
+  }, [user, selectedAnime, currentEpisode]);
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const itemsPerPage = 12;
 
@@ -1001,7 +750,6 @@ export default function AnimePortal({
     
     setVideoLoading(true);
     setCurrentEpisode(ep);
-    setCurrentTime(0);
     
     if (auth.currentUser && selectedAnime) {
       const historyId = `${auth.currentUser.uid}_${selectedAnime.id}`;
@@ -1054,13 +802,6 @@ export default function AnimePortal({
       setShowAgeVerification(true);
     } else {
       action();
-    }
-  };
-
-  const skipOpening = () => {
-    if (videoRef.current && currentEpisode?.openingEnd) {
-      videoRef.current.currentTime = currentEpisode.openingEnd;
-      setCurrentTime(currentEpisode.openingEnd);
     }
   };
 
@@ -2070,86 +1811,15 @@ export default function AnimePortal({
 
                           <div className="w-full h-full shadow-2xl relative">
                             {currentEpisode ? (
-                              (() => {
-                                let url = currentEpisode.videoUrl.trim();
-                                if (url.includes('<iframe')) {
-                                  const srcMatch = url.match(/src=["']([^"']+)["']/);
-                                  if (srcMatch) url = srcMatch[1];
-                                }
-                                if (url.startsWith('//')) url = 'https:' + url;
-                                
-                                // Direct stream support for top platforms as per requirements
-                                const proxyMap = {
-                                  't.me/': '/api/telegram/stream',
-                                  'telegram': '/api/telegram/stream',
-                                  'vk.com/': '/api/vk/stream',
-                                  'd.tube/': '/api/dtube/stream',
-                                  'dtube.video': '/api/dtube/stream',
-                                  'dailymotion.com': '/api/dailymotion/stream',
-                                  'geo.dailymotion.com': '/api/dailymotion/stream',
-                                  'dai.ly': '/api/dailymotion/stream'
-                                };
-
-                                 const proxyEntry = Object.entries(proxyMap).find(([key]) => url.includes(key));
-                                if (proxyEntry) {
-                                  const proxyUrl = `${proxyEntry[1]}?url=${encodeURIComponent(url)}`;
-                                  return (
-                                    <UniversalVideoPlayer 
-                                      src={proxyUrl}
-                                      videoRef={videoRef}
-                                      videoLoading={videoLoading}
-                                      setVideoLoading={setVideoLoading}
-                                      setCurrentTime={setCurrentTime}
-                                      onNext={handleNextEpisode}
-                                      onPrev={handlePrevEpisode}
-                                      hasNext={episodes.findIndex(ep => ep.id === currentEpisode?.id) < episodes.length - 1}
-                                      hasPrev={episodes.findIndex(ep => ep.id === currentEpisode?.id) > 0}
-                                    />
-                                  );
-                                }
-
-                                const isDirectVideo = (url.toLowerCase().match(/\.(mp4|mkv|webm|mov|avi|m3u8)$/) || url.includes('stream') || url.includes('/file/')) && !forceLegacy;
-
-                                if (isDirectVideo) {
-                                  return (
-                                    <UniversalVideoPlayer 
-                                      src={url}
-                                      videoRef={videoRef}
-                                      videoLoading={videoLoading}
-                                      setVideoLoading={setVideoLoading}
-                                      setCurrentTime={setCurrentTime}
-                                      onNext={handleNextEpisode}
-                                      onPrev={handlePrevEpisode}
-                                      hasNext={episodes.findIndex(ep => ep.id === currentEpisode?.id) < episodes.length - 1}
-                                      hasPrev={episodes.findIndex(ep => ep.id === currentEpisode?.id) > 0}
-                                    />
-                                  );
-                                }
-                                
-                                let embedUrl = url;
-                                if (url.includes('youtube.com') || url.includes('youtu.be')) {
-                                  embedUrl = url.replace('watch?v=', 'embed/');
-                                } else if (url.includes('ok.ru/video/')) {
-                                  embedUrl = url.replace('ok.ru/video/', 'ok.ru/videoembed/');
-                                } else if (url.includes('dailymotion.com') || url.includes('dai.ly')) {
-                                  // Fallback embed for dailymotion if proxy fails or for iframe mode
-                                  const dmIdMatch = url.match(/(?:\/video\/|dai\.ly\/)([a-zA-Z0-9]+)/);
-                                  if (dmIdMatch) {
-                                    embedUrl = `https://www.dailymotion.com/embed/video/${dmIdMatch[1]}`;
-                                  }
-                                }
-
-                                return (
-                                  <iframe 
-                                    key={embedUrl}
-                                    src={embedUrl} 
-                                    className="w-full h-full border-none" 
-                                    allowFullScreen 
-                                    allow="autoplay; encrypted-media" 
-                                    onLoad={() => setVideoLoading(false)}
-                                  />
-                                );
-                              })()
+                              <UniversalVideoPlayer 
+                                src={currentEpisode.videoUrl}
+                                videoLoading={videoLoading}
+                                setVideoLoading={setVideoLoading}
+                                onNext={handleNextEpisode}
+                                hasNext={episodes.findIndex((ep: any) => ep.id === currentEpisode?.id) < episodes.length - 1}
+                                openingStart={currentEpisode.openingStart}
+                                openingEnd={currentEpisode.openingEnd}
+                              />
                             ) : (
                               <div className="w-full h-full flex flex-col items-center justify-center gap-8 bg-black">
                                 <div className="w-32 h-32 bg-red-500/10 rounded-full flex items-center justify-center animate-pulse border border-red-500/20">
@@ -2159,24 +1829,7 @@ export default function AnimePortal({
                               </div>
                             )}
 
-                            {/* Skip Intro Overlay */}
-                            <AnimatePresence>
-                              {currentEpisode && 
-                               Number(currentEpisode.openingEnd) > 0 &&
-                               currentTime >= Number(currentEpisode.openingStart) && 
-                               currentTime < Number(currentEpisode.openingEnd) && (
-                                <motion.button
-                                  initial={{ opacity: 0, x: 20 }}
-                                  animate={{ opacity: 1, x: 0 }}
-                                  exit={{ opacity: 0, x: 20 }}
-                                  onClick={skipOpening}
-                                  className="absolute bottom-20 right-8 z-[150] bg-red-600 hover:bg-red-500 text-white px-8 py-4 rounded-xl font-black text-[10px] uppercase tracking-[0.2em] shadow-2xl shadow-red-600/40 border border-red-400 flex items-center gap-3 transition-all"
-                                >
-                                   <Sparkles size={16} />
-                                   SKIP INTRO
-                                </motion.button>
-                              )}
-                            </AnimatePresence>
+                            {/* Skip Intro logic moved to UniversalVideoPlayer */}
                           </div>
                        </div>
                        
