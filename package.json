@@ -17,6 +17,7 @@
     "lint": "tsc --noEmit",
     "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
     "electron:build": "vite build && electron-builder build --win --publish never",
+    "electron:build:linux": "vite build && electron-builder build --linux --publish never",
     "make-ico": "node scripts/make-ico.cjs"
   },
   "dependencies": {
@@ -117,7 +118,8 @@
         "deb",
         "pacman"
       ],
-      "icon": "icon.png",
+      "icon": "icon512.png",
+      "maintainer": "Animem.uz <info@animem.uz>",
       "category": "Network"
     },
     "mac": {
