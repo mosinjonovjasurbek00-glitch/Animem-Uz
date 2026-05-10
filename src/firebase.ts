@@ -17,6 +17,8 @@ import {
 import { initializeFirestore, doc, setDoc, serverTimestamp, updateDoc, getDocFromServer } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getMessaging, onMessage } from 'firebase/messaging';
+import { Capacitor } from '@capacitor/core';
+import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
@@ -141,11 +143,27 @@ export const syncUserToFirestore = async (user: any) => {
 
 export const loginWithGoogle = async () => {
     try {
-        const result = await signInWithPopup(auth, googleProvider);
-        await syncUserToFirestore(result.user);
-        return result;
+        if (Capacitor.isNativePlatform()) {
+            // Use native login on Android/iOS
+            const result = await FirebaseAuthentication.signInWithGoogle();
+            
+            // Link native credential to Firebase Web SDK
+            if (result.credential) {
+                const { GoogleAuthProvider, signInWithCredential } = await import('firebase/auth');
+                const credential = GoogleAuthProvider.credential(result.credential.idToken);
+                const userCredential = await signInWithCredential(auth, credential);
+                await syncUserToFirestore(userCredential.user);
+                return userCredential;
+            }
+            return null;
+        } else {
+            // Standard web login
+            const result = await signInWithPopup(auth, googleProvider);
+            await syncUserToFirestore(result.user);
+            return result;
+        }
     } catch (error: any) {
-        if (error.code === 'auth/popup-blocked' || error.message.includes('popup')) {
+        if (!Capacitor.isNativePlatform() && (error.code === 'auth/popup-blocked' || error.message.includes('popup'))) {
              console.warn("Popup bloklandi. Redirect orqali kirishga urinish...");
              const { signInWithRedirect } = await import('firebase/auth');
              await signInWithRedirect(auth, googleProvider);
