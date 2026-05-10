@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Animem Uz</string>
+    <string name="title_activity_main">Animem Uz</string>
+    <string name="package_name">uz.animem.app</string>
+    <string name="custom_url_scheme">uz.animem.app</string>
+</resources>

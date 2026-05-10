@@ -1,17 +1,28 @@
 {
-  "name": "react-example",
+  "name": "animem-uz",
+  "productName": "Animem Uz",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
+  "description": "O'zbekistondagi eng yirik anime portali - Animem Uz",
+  "author": "Animem.uz",
+  "homepage": "https://animem.uz",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "tsx server.ts",
     "start": "tsx server.ts",
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
+    "electron:build": "vite build && electron-builder build --win --publish never",
+    "make-ico": "node scripts/make-ico.cjs"
   },
   "dependencies": {
+    "@capacitor/android": "^8.3.3",
+    "@capacitor/cli": "^7.6.4",
+    "@capacitor/core": "^8.3.3",
     "@google/genai": "^1.29.0",
     "@hcaptcha/react-hcaptcha": "^2.0.2",
     "@marsidev/react-turnstile": "^1.5.1",
@@ -20,6 +31,7 @@
     "@vitejs/plugin-react": "^5.0.4",
     "axios": "^1.7.9",
     "big-integer": "^1.6.52",
+    "bufferutil": "^4.1.0",
     "clsx": "^2.1.1",
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
@@ -41,13 +53,74 @@
     "telegram": "^2.26.22",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
+    "utf-8-validate": "^6.0.6",
     "vite": "^6.2.0"
   },
   "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "@vercel/node": "^5.7.7",
     "autoprefixer": "^10.4.21",
-    "tailwindcss": "^4.1.14"
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "electron": "^36.0.0",
+    "electron-builder": "^25.1.8",
+    "jimp": "^0.22.12",
+    "png-to-ico": "^2.1.8",
+    "tailwindcss": "^4.1.14",
+    "wait-on": "^8.0.3"
+  },
+  "build": {
+    "appId": "uz.animem.desktop",
+    "productName": "Animem Uz",
+    "copyright": "Copyright © 2025 Animem.uz",
+    "directories": {
+      "output": "release",
+      "buildResources": "."
+    },
+    "files": [
+      "dist/**/*",
+      "electron/main.cjs",
+      "icon.png",
+      "icon.ico"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "icon.ico",
+      "uninstallerIcon": "icon.ico",
+      "installerHeaderIcon": "icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Animem Uz",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb",
+        "pacman"
+      ],
+      "icon": "icon.png",
+      "category": "Network"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "icon.png"
+    }
   }
 }
