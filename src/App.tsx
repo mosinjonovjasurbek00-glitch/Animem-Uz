@@ -443,18 +443,6 @@ function AppContent({
             {t('copyright')}
           </div>
           
-          <a 
-            href="https://t.me/animemuzdownloadsapp/4" 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="group relative inline-flex items-center gap-3 px-8 py-4 bg-red-600 rounded-2xl overflow-hidden shadow-[0_0_40px_rgba(220,38,38,0.3)] hover:shadow-[0_0_60px_rgba(220,38,38,0.5)] transition-all duration-500"
-          >
-            <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-500" />
-            <Smartphone size={18} className="text-white relative z-10" />
-            <span className="text-white font-black uppercase tracking-[0.2em] text-[10px] sm:text-xs relative z-10">
-              ILOVANI YUKLASH
-            </span>
-          </a>
           
           <div className="mt-8 flex justify-center w-full max-w-full overflow-hidden">
             <a href="https://beta.publishers.adsterra.com/referral/zUXZZSY82Y" rel="nofollow" target="_blank" className="max-w-full">
