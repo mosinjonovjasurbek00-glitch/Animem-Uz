@@ -99,14 +99,13 @@ export const AuthModal = ({ onSuccess, onClose, language = 'uz' }: AuthModalProp
             Animem<span className="text-red-500"> Uz</span>
           </h2>
           <p className="text-[10px] text-slate-500 uppercase tracking-widest mt-3 font-bold">
-            {mode === 'select' ? t('signInOrCreateAccount') : 
-             mode === 'login' ? 'Tizimga kirish' : 
+            {mode === 'login' ? 'Tizimga kirish' : 
              mode === 'signup' ? 'Ro\'yxatdan o\'tish' : 'Parolni tiklash'}
           </p>
         </div>
 
         <AnimatePresence mode="wait">
-          {mode === 'login' || mode === 'signup' || mode === 'forgot' ? (
+          {(mode === 'login' || mode === 'signup' || mode === 'forgot') && (
             <motion.form 
               key="form"
               initial={{ opacity: 0, x: 20 }}
